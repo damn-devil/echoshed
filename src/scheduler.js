@@ -1,105 +1,88 @@
 import cron from 'node-cron';
-import { LESSON_TIMES, BREAK_TIMES } from './config.js';
-import { getTodayLessonsSorted, timeToMinutes, parseAuditoryInfo } from './bsuir-api.js';
+import { getTodayLessonsSorted } from './bsuir-api.js';
 import {
-  getUsersWithNotification,
-  getNotificationSettings,
   logNotification,
   wasNotificationSent,
   getAllUsers,
 } from './database.js';
-
-const WARNING_MINUTES = 3;
 
 function getCurrentTimeMinutes() {
   const now = new Date();
   return now.getHours() * 60 + now.getMinutes();
 }
 
-function formatBreakWarning(breakInfo, currentLesson) {
-  return `[ПРЕДУПРЕЖДЕНИЕ О ПЕРЕМЕНЕ]\n\nТЕКУЩАЯ ПАРА ЗАКАНЧИВАЕТСЯ ЧЕРЕЗ ${WARNING_MINUTES} МИН\nДЛИТЕЛЬНОСТЬ ПЕРЕМЕНЫ: ${breakInfo.duration} МИН\nВРЕМЯ ПЕРЕМЕНЫ: ${breakInfo.start} - ${breakInfo.end}`;
+function timeToMinutes(timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + m;
 }
 
-function formatBreakStart(breakInfo, nextLesson) {
-  let text = `[ПЕРЕМЕНА НАЧАЛАСЬ]\n\nДЛИТЕЛЬНОСТЬ ПЕРЕМЕНЫ: ${breakInfo.duration} МИН\nВРЕМЯ ПЕРЕМЕНЫ: ${breakInfo.start} - ${breakInfo.end}`;
-
-  if (nextLesson) {
-    const auditoryInfo = parseAuditoryInfo(nextLesson.auditory);
-    text += `\n\nСЛЕДУЮЩАЯ ПАРА: ${nextLesson.subject}`;
-    if (nextLesson.lessonTypeAbbrev) text += ` (${nextLesson.lessonTypeAbbrev})`;
-    if (auditoryInfo.room) {
-      text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
-      if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
-    }
-    if (nextLesson.numSubgroup > 0) text += `\nПОДГРУППА: ${nextLesson.numSubgroup}`;
-    const timeInfo = LESSON_TIMES[nextLesson.number - 1];
-    if (timeInfo) text += `\nНАЧАЛО: ${timeInfo.start}`;
-  }
-
-  return text;
+function random(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function formatLessonWarning(lesson) {
-  const timeInfo = LESSON_TIMES[lesson.number - 1];
-  const auditoryInfo = parseAuditoryInfo(lesson.auditory);
-
-  let text = `[ПРЕДУПРЕЖДЕНИЕ]\n\nПАРА ${lesson.number} НАЧНЕТСЯ ЧЕРЕЗ ${WARNING_MINUTES} МИН`;
-  text += `\nПРЕДМЕТ: ${lesson.subject}`;
+function formatLessonCard(lesson) {
+  let text = `📚 ПАРА ${lesson.number}\n`;
+  text += `📖 ${lesson.subject}`;
   if (lesson.lessonTypeAbbrev) text += ` (${lesson.lessonTypeAbbrev})`;
-  if (auditoryInfo.room) {
-    text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
-  }
-  if (lesson.numSubgroup > 0) text += `\nПОДГРУППА: ${lesson.numSubgroup}`;
-  if (timeInfo) text += `\nВРЕМЯ: ${timeInfo.start} - ${timeInfo.end}`;
-
+  text += `\n⏰ ${lesson.startLessonTime} — ${lesson.endLessonTime}`;
+  if (lesson.employee) text += `\n👤 ${lesson.employee.firstName} ${lesson.employee.lastName}`;
+  if (lesson.auditory) text += `\n📍 ${lesson.auditory}`;
   return text;
 }
 
-function formatLessonStart(lesson) {
-  const timeInfo = LESSON_TIMES[lesson.number - 1];
-  const auditoryInfo = parseAuditoryInfo(lesson.auditory);
-  const teacher = lesson.employee
-    ? `${lesson.employee.firstName} ${lesson.employee.lastName}`
-    : '';
+const MORNING_MESSAGES = [
+  `☀️ ДОБРОЕ УТРО!\n\nПервая пара начнётся через 30 минут:\n\n{lesson}`,
+  `🌅 Просыпайся! Через 30 минут первая пара:\n\n{lesson}`,
+  `⏰ Доброе утро! Не забудь — через 30 минут пара:\n\n{lesson}`,
+  `🌞 Утро! Первая пара уже через 30 минут:\n\n{lesson}`,
+  `☕ С добрым утром! Через 30 минут начинаем:\n\n{lesson}`,
+  `🎒 Доброе утро! Собирайся — через 30 минут пара:\n\n{lesson}`,
+];
 
-  let text = `[ПАРА НАЧАЛАСЬ]\n\nПАРА: ${lesson.number}`;
-  text += `\nПРЕДМЕТ: ${lesson.subject}`;
-  if (lesson.lessonTypeAbbrev) text += ` (${lesson.lessonTypeAbbrev})`;
-  if (teacher) text += `\nПРЕПОДАВАТЕЛЬ: ${teacher}`;
-  if (auditoryInfo.room) {
-    text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
-  }
-  if (lesson.numSubgroup > 0) text += `\nПОДГРУППА: ${lesson.numSubgroup}`;
-  if (timeInfo) text += `\nВРЕМЯ: ${timeInfo.start} - ${timeInfo.end}`;
+const LESSON_START_MESSAGES = [
+  `🔔 ПАРА НАЧАЛАСЬ!\n\n{lesson}`,
+  `📢 Начинаем!\n\n{lesson}`,
+  `🚀 Поехали! Пара началась:\n\n{lesson}`,
+  `⚡ Время учиться! Пара началась:\n\n{lesson}`,
+  `📚 Пара началась, не опаздывай!\n\n{lesson}`,
+  `🎯 Начинаем пару:\n\n{lesson}`,
+];
 
-  return text;
-}
+const MINIBREAK_START_MESSAGES = [
+  `☕ ПЯТИМИНУТКА НАЧАЛАСЬ!\n\nПара {number} — {subject}\nОтдохни 5 минут ⏱`,
+  `😌 Отдыхай 5 минут!\n\nПара {number} — {subject}\n⏱ Пятиминутка началась`,
+  `💪 Держись! Пятиминутка началась\n\nПара {number} — {subject}`,
+  `🧘 5 минут отдыха!\n\nПара {number} — {subject}\nПереведи дух`,
+  `⏸️ Мини-перерыв!\n\nПара {number} — {subject}\n5 минут свободы`,
+  `🎉 Пятиминутка!\n\nПара {number} — {subject}\nОтдохни немного`,
+];
 
-function formatNextAfterEnd(lesson) {
-  const timeInfo = LESSON_TIMES[lesson.number - 1];
-  const auditoryInfo = parseAuditoryInfo(lesson.auditory);
+const MINIBREAK_END_MESSAGES = [
+  `⏰ ПЯТИМИНУТКА ЗАКОНЧИЛАСЬ!\n\nПара {number} продолжается:\n{subject}\n⏱ Осталось до конца: {left} мин`,
+  `🔙 Возвращаемся к работе!\n\nПара {number} — {subject}\n⏱ До конца: {left} мин`,
+  `😤 Отдых окончен!\n\nПара {number} — {subject}\n⏱ Осталось: {left} мин`,
+  `⚡ Снова в бой!\n\nПара {number} — {subject}\n⏱ До конца: {left} мин`,
+  `📝 Продолжаем пару!\n\n{subject}\n⏱ Осталось: {left} мин`,
+  `🎓 Пятиминутка закончилась\n\nПара {number} — {subject}\n⏱ До конца: {left} мин`,
+];
 
-  let text = `⏭️ СЛЕДУЮЩАЯ ПАРА\n`;
-  text += `──────────────────────────────\n\n`;
-  text += `ПАРА: ${lesson.number}\n`;
-  text += `ПРЕДМЕТ: ${lesson.subject}`;
-  if (lesson.lessonTypeAbbrev) text += ` (${lesson.lessonTypeAbbrev})`;
-  if (lesson.employee) text += `\nПРЕПОДАВАТЕЛЬ: ${lesson.employee.firstName} ${lesson.employee.lastName}`;
-  if (auditoryInfo.room) {
-    text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
-  }
-  if (lesson.numSubgroup > 0) text += `\nПОДГРУППА: ${lesson.numSubgroup}`;
-  if (timeInfo) text += `\nНАЧАЛО: ${timeInfo.start}`;
+const LESSON_END_MESSAGES = [
+  `✅ ПАРА {number} ЗАКОНЧИЛАСЬ!\n⏱ Перемена: {breakStart} — {breakEnd} ({breakDuration} мин)\n\n➡️ СЛЕДУЮЩАЯ ПАРА:\n{next}`,
+  `🎉 Пара {number} — всё!\n⏱ Перемена: {breakStart} — {breakEnd} ({breakDuration} мин)\n\n➡️ Дальше:\n{next}`,
+  `🏁 Пара {number} завершена!\n⏱ Перемена: {breakStart} — {breakEnd} ({breakDuration} мин)\n\n➡️ Следующая:\n{next}`,
+  `💨 Отпустили!\n⏱ Перемена: {breakStart} — {breakEnd} ({breakDuration} мин)\n\n➡️ Потом:\n{next}`,
+  `📚 Пара {number} закончилась!\n⏱ Перемена: {breakStart} — {breakEnd} ({breakDuration} мин)\n\n➡️ Далее:\n{next}`,
+  `✨ Готово! Пара {number} позади\n⏱ Перемена: {breakStart} — {breakEnd} ({breakDuration} мин)\n\n➡️ Следующая:\n{next}`,
+];
 
-  return text;
-}
-
-function formatLastLessonEnd(lastLesson) {
-  return `[ДЕНЬ ЗАВЕРШЕН]\n\nПОСЛЕДНЯЯ ПАРА ЗАВЕРШИЛАСЬ: ${lastLesson.subject}\nСТАТУС: СВОБОДЕН`;
-}
+const DAY_COMPLETE_MESSAGES = [
+  `🎉 ВСЕ ПАРЫ НА СЕГОДНЯ ЗАКОНЧИЛИСЬ!\n\nПоследняя пара: {subject}\nОтдыхай! 😊`,
+  `🏁 День окончен!\n\nПоследняя пара: {subject}\nТы свободен! 🎊`,
+  `🎊 Ура, пары закончились!\n\nПоследняя: {subject}\nВремя отдыхать! 🛋️`,
+  `🌟 День завершён!\n\nПоследняя пара: {subject}\nМолодец, так держать! 💪`,
+  `🎯 Все цели на сегодня достигнуты!\n\nПоследняя пара: {subject}\nОтдыхай! 🌙`,
+  `🍕 Пары закончились!\n\nПоследняя: {subject}\nВремя для себя! 🎮`,
+];
 
 export function startNotificationScheduler(bot) {
   const scheduleCache = new Map();
@@ -136,88 +119,107 @@ export function startNotificationScheduler(bot) {
     for (const user of allUsers) {
       try {
         const chatId = user.chat_id;
-        const subgroup = user.subgroup || 0;
-        const settings = getNotificationSettings(chatId);
         const lessons = await getLessonsForUser(user);
 
         if (lessons.length === 0) continue;
 
-        const lessonNumbers = lessons.map(l => l.number);
-        const maxPairNum = Math.max(...lessonNumbers);
+        const maxPairNum = Math.max(...lessons.map(l => l.number));
         const lessonByNum = {};
         for (const l of lessons) {
-          lessonByNum[l.number] = l;
+          if (!lessonByNum[l.number]) lessonByNum[l.number] = l;
         }
 
         for (const lesson of lessons) {
-          const timeInfo = LESSON_TIMES[lesson.number - 1];
-          if (!timeInfo) continue;
+          const startTime = timeToMinutes(lesson.startLessonTime);
+          const endTime = timeToMinutes(lesson.endLessonTime);
+          const nextLesson = lessonByNum[lesson.number + 1];
+          const isLast = lesson.number === maxPairNum;
 
-          const startMin = timeToMinutes(timeInfo.start);
-          const endMin = timeToMinutes(timeInfo.end);
-
-          if (settings.lessonWarning && currentMinutes === startMin - WARNING_MINUTES) {
-            const key = `lesson_warning_${lesson.number}`;
-            if (!wasNotificationSent(chatId, key, lesson.number, today)) {
-              bot.sendMessage(chatId, formatLessonWarning(lesson)).catch(() => {});
-              logNotification(chatId, key, lesson.number);
+          // 1. Утро — за 30 мин до первой пары
+          if (lesson.number === 1) {
+            const morningTime = startTime - 30;
+            if (currentMinutes === morningTime) {
+              const key = `morning_reminder`;
+              if (!wasNotificationSent(chatId, key, 0, today)) {
+                const msg = random(MORNING_MESSAGES).replace('{lesson}', formatLessonCard(lesson));
+                bot.sendMessage(chatId, msg).catch(() => {});
+                logNotification(chatId, key, 0);
+                console.log(`[NOTIF] Morning → ${chatId}`);
+              }
             }
           }
 
-          if (settings.lessonStart && currentMinutes === startMin) {
+          // 2. Начало пары
+          if (currentMinutes === startTime) {
             const key = `lesson_start_${lesson.number}`;
             if (!wasNotificationSent(chatId, key, lesson.number, today)) {
-              bot.sendMessage(chatId, formatLessonStart(lesson)).catch(() => {});
+              const msg = random(LESSON_START_MESSAGES).replace('{lesson}', formatLessonCard(lesson));
+              bot.sendMessage(chatId, msg).catch(() => {});
               logNotification(chatId, key, lesson.number);
+              console.log(`[NOTIF] Start lesson ${lesson.number} → ${chatId}`);
             }
           }
 
-          if (currentMinutes === endMin) {
-            const nextLesson = lessonByNum[lesson.number + 1];
-            if (nextLesson) {
-              const key = `next_after_end_${lesson.number}`;
-              if (!wasNotificationSent(chatId, key, lesson.number, today)) {
-                bot.sendMessage(chatId, formatNextAfterEnd(nextLesson)).catch(() => {});
-                logNotification(chatId, key, lesson.number);
-              }
+          // 3. Начало пятиминутки — через 40 мин после начала
+          const miniBreakStart = startTime + 40;
+          if (currentMinutes === miniBreakStart) {
+            const key = `minibreak_start_${lesson.number}`;
+            if (!wasNotificationSent(chatId, key, lesson.number, today)) {
+              const msg = random(MINIBREAK_START_MESSAGES)
+                .replace('{number}', lesson.number)
+                .replace('{subject}', lesson.subject);
+              bot.sendMessage(chatId, msg).catch(() => {});
+              logNotification(chatId, key, lesson.number);
+              console.log(`[NOTIF] Minibreak start lesson ${lesson.number} → ${chatId}`);
             }
           }
 
-          if (settings.breakWarning && currentMinutes === endMin - WARNING_MINUTES) {
-            const breakInfo = BREAK_TIMES.find(b => b.after === lesson.number);
-            if (breakInfo) {
-              const key = `break_warning_${lesson.number}`;
-              if (!wasNotificationSent(chatId, key, lesson.number, today)) {
-                bot.sendMessage(chatId, formatBreakWarning(breakInfo, lesson)).catch(() => {});
-                logNotification(chatId, key, lesson.number);
-              }
+          // 4. Конец пятиминутки — через 45 мин после начала
+          const miniBreakEnd = startTime + 45;
+          if (currentMinutes === miniBreakEnd) {
+            const key = `minibreak_end_${lesson.number}`;
+            if (!wasNotificationSent(chatId, key, lesson.number, today)) {
+              const left = endTime - currentMinutes;
+              const msg = random(MINIBREAK_END_MESSAGES)
+                .replace('{number}', lesson.number)
+                .replace('{subject}', lesson.subject)
+                .replace('{left}', left);
+              bot.sendMessage(chatId, msg).catch(() => {});
+              logNotification(chatId, key, lesson.number);
+              console.log(`[NOTIF] Minibreak end lesson ${lesson.number} → ${chatId}`);
             }
           }
-        }
 
-        for (const breakInfo of BREAK_TIMES) {
-          const breakStartMin = timeToMinutes(breakInfo.start);
-
-          if (settings.breakStart && currentMinutes === breakStartMin) {
-            const nextLesson = lessonByNum[breakInfo.after + 1];
-            const key = `break_start_${breakInfo.after}`;
-            if (!wasNotificationSent(chatId, key, breakInfo.after, today)) {
-              bot.sendMessage(chatId, formatBreakStart(breakInfo, nextLesson)).catch(() => {});
-              logNotification(chatId, key, breakInfo.after);
+          // 5. Конец пары + следующая пара
+          if (currentMinutes === endTime && nextLesson) {
+            const key = `lesson_end_${lesson.number}`;
+            if (!wasNotificationSent(chatId, key, lesson.number, today)) {
+              const breakStart = lesson.endLessonTime;
+              const breakEnd = nextLesson.startLessonTime;
+              const breakDuration = timeToMinutes(breakEnd) - timeToMinutes(breakStart);
+              const msg = random(LESSON_END_MESSAGES)
+                .replace('{number}', lesson.number)
+                .replace('{breakStart}', breakStart)
+                .replace('{breakEnd}', breakEnd)
+                .replace('{breakDuration}', breakDuration)
+                .replace('{next}', formatLessonCard(nextLesson));
+              bot.sendMessage(chatId, msg).catch(() => {});
+              logNotification(chatId, key, lesson.number);
+              console.log(`[NOTIF] End lesson ${lesson.number} + next → ${chatId}`);
             }
           }
-        }
 
-        const lastLesson = lessonByNum[maxPairNum];
-        if (lastLesson) {
-          const lastEndTime = timeToMinutes(LESSON_TIMES[maxPairNum - 1].end);
-          if (currentMinutes === lastEndTime) {
-            const key = `last_lesson_end`;
-            if (!wasNotificationSent(chatId, key, maxPairNum, today)) {
-              bot.sendMessage(chatId, formatLastLessonEnd(lastLesson)).catch(() => {});
-              logNotification(chatId, key, maxPairNum);
+          // 6. Последняя пара закончилась — день завершён
+          if (currentMinutes === endTime && isLast) {
+            const key = `day_complete`;
+            if (!wasNotificationSent(chatId, key, lesson.number, today)) {
+              const msg = random(DAY_COMPLETE_MESSAGES).replace('{subject}', lesson.subject);
+              bot.sendMessage(chatId, msg).catch(() => {});
+              logNotification(chatId, key, lesson.number);
+              console.log(`[NOTIF] Day complete → ${chatId}`);
             }
           }
+
         }
 
       } catch (error) {
