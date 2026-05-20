@@ -31,16 +31,22 @@ const LESSON_TYPE_MAP = {
 };
 
 function getLessonNumber(timeStr) {
+  if (!timeStr) return null;
   const [h, m] = timeStr.split(':').map(Number);
   const minutes = h * 60 + m;
-  for (let i = 0; i < LESSON_TIMES.length; i++) {
-    const [sh, sm] = LESSON_TIMES[i].start.split(':').map(Number);
-    if (minutes === sh * 60 + sm) return i + 1;
-  }
-  for (let i = 0; i < LESSON_TIMES.length; i++) {
-    const [sh, sm] = LESSON_TIMES[i].start.split(':').map(Number);
-    const [eh, em] = LESSON_TIMES[i].end.split(':').map(Number);
-    if (minutes >= sh * 60 + sm && minutes < eh * 60 + em) return i + 1;
+  
+  const ranges = [
+    { num: 1, start: 8 * 60, end: 10 * 60 },
+    { num: 2, start: 10 * 60, end: 12 * 60 },
+    { num: 3, start: 12 * 60, end: 13 * 60 + 30 },
+    { num: 4, start: 13 * 60 + 30, end: 16 * 60 },
+    { num: 5, start: 16 * 60, end: 17 * 60 + 50 },
+    { num: 6, start: 17 * 60 + 50, end: 19 * 60 + 40 },
+    { num: 7, start: 19 * 60 + 40, end: 21 * 60 + 30 },
+  ];
+  
+  for (const r of ranges) {
+    if (minutes >= r.start && minutes < r.end) return r.num;
   }
   return null;
 }
@@ -293,10 +299,7 @@ export async function getNextLessonInfo(groupNumber, subgroup = 0) {
   const currentTime = now.getHours() * 60 + now.getMinutes();
 
   for (const lesson of lessons) {
-    const timeInfo = LESSON_TIMES[lesson.number - 1];
-    if (!timeInfo) continue;
-
-    const [startH, startM] = timeInfo.start.split(':').map(Number);
+    const [startH, startM] = lesson.startLessonTime.split(':').map(Number);
     const startMin = startH * 60 + startM;
 
     if (currentTime < startMin) {
@@ -313,7 +316,7 @@ export async function getNextLessonInfo(groupNumber, subgroup = 0) {
       return {
         isGoingNow: false,
         isNext: true,
-        message: `[СЛЕДУЮЩАЯ ПАРА]\n${'─'.repeat(30)}\n\n${formatLessonShort(lesson)}\n\nНАЧАЛО: ${timeInfo.start} (ЧЕРЕЗ ${timeUntil})`,
+        message: `[СЛЕДУЮЩАЯ ПАРА]\n${'─'.repeat(30)}\n\n${formatLessonShort(lesson)}\n\nНАЧАЛО: ${lesson.startLessonTime} (ЧЕРЕЗ ${timeUntil})`,
       };
     }
   }
@@ -321,11 +324,10 @@ export async function getNextLessonInfo(groupNumber, subgroup = 0) {
   const tomorrowLessons = await getTomorrowLessonsSorted(groupNumber, subgroup);
   if (tomorrowLessons.length > 0) {
     const firstLesson = tomorrowLessons[0];
-    const timeInfo = LESSON_TIMES[firstLesson.number - 1];
     return {
       isGoingNow: false,
       isNext: false,
-      message: `[БОЛЬШЕ ПАР СЕГОДНЯ НЕТ]\n\nПЕРВАЯ ПАРА ЗАВТРА:\n${formatLessonShort(firstLesson)}\nНАЧАЛО: ${timeInfo?.start || '??:??'}`,
+      message: `[БОЛЬШЕ ПАР СЕГОДНЯ НЕТ]\n\nПЕРВАЯ ПАРА ЗАВТРА:\n${formatLessonShort(firstLesson)}\nНАЧАЛО: ${firstLesson.startLessonTime || '??:??'}`,
     };
   }
 
@@ -342,11 +344,8 @@ export async function getCurrentLessonInfo(groupNumber, subgroup = 0) {
   const currentTime = now.getHours() * 60 + now.getMinutes();
 
   for (const lesson of lessons) {
-    const timeInfo = LESSON_TIMES[lesson.number - 1];
-    if (!timeInfo) continue;
-
-    const [startH, startM] = timeInfo.start.split(':').map(Number);
-    const [endH, endM] = timeInfo.end.split(':').map(Number);
+    const [startH, startM] = lesson.startLessonTime.split(':').map(Number);
+    const [endH, endM] = lesson.endLessonTime.split(':').map(Number);
     const startMin = startH * 60 + startM;
     const endMin = endH * 60 + endM;
 
@@ -392,8 +391,9 @@ export async function searchGroup(query) {
 }
 
 function formatLessonShort(lesson) {
-  const timeInfo = LESSON_TIMES[lesson.number - 1];
-  const timeStr = timeInfo ? `${timeInfo.start} - ${timeInfo.end}` : '??:?? - ??:??';
+  const timeStr = lesson.startLessonTime && lesson.endLessonTime
+    ? `${lesson.startLessonTime} - ${lesson.endLessonTime}`
+    : '??:?? - ??:??';
   const subject = lesson.subject || 'НЕ УКАЗАНО';
   const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
   const auditoryInfo = parseAuditoryInfo(lesson.auditory);
@@ -412,8 +412,9 @@ function formatLessonShort(lesson) {
 }
 
 function formatLessonFull(lesson) {
-  const timeInfo = LESSON_TIMES[lesson.number - 1];
-  const timeStr = timeInfo ? `${timeInfo.start} - ${timeInfo.end}` : '??:?? - ??:??';
+  const timeStr = lesson.startLessonTime && lesson.endLessonTime
+    ? `${lesson.startLessonTime} - ${lesson.endLessonTime}`
+    : '??:?? - ??:??';
   const subject = lesson.subject || 'НЕ УКАЗАНО';
   const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
   const teacher = lesson.employee
