@@ -30,6 +30,12 @@ const LESSON_TYPE_MAP = {
   'ДКР': 'Домашняя контрольная работа',
 };
 
+function getMinskTime() {
+  const now = new Date();
+  const minskStr = now.toLocaleString('en-US', { timeZone: 'Europe/Minsk' });
+  return new Date(minskStr);
+}
+
 function getLessonNumber(timeStr) {
   if (!timeStr) return null;
   const [h, m] = timeStr.split(':').map(Number);
@@ -84,12 +90,14 @@ function enrichLesson(rawLesson) {
 }
 
 function getTodayWeekdayKey() {
-  const day = new Date().getDay();
+  const now = getMinskTime();
+  const day = now.getDay();
   return WEEKDAY_MAP[day] || null;
 }
 
 function getTomorrowWeekdayKey() {
-  const day = new Date().getDay();
+  const now = getMinskTime();
+  const day = now.getDay();
   const tomorrowDay = day === 0 ? 1 : day === 6 ? 7 : day + 1;
   return WEEKDAY_MAP[tomorrowDay] || null;
 }
@@ -118,12 +126,10 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
   const now = Date.now();
   const cached = scheduleCache.get(cacheKey);
   if (cached && now - cached.timestamp < CACHE_TTL) {
-    console.log(`[API] Cache hit for ${cacheKey}`);
     return cached.data;
   }
 
   try {
-    // getGroupBySubgroup часто возвращает пустые данные, поэтому всегда берём полное расписание
     console.log(`[API] Fetching schedule for ${groupNumber}...`);
     const schedule = await client.schedule.getGroup(groupNumber);
     
@@ -164,7 +170,7 @@ function getLessonsForDay(schedule, dayKey, subgroup = 0) {
     filtered = rawLessons;
   }
   
-  // Фильтрация по подгруппе: показываем уроки для выбранной подгруппы + общие (numSubgroup=0)
+  // Фильтрация по подгруппе
   if (subgroup > 0) {
     const beforeSubgroupFilter = filtered.length;
     filtered = filtered.filter(l => {
@@ -295,15 +301,14 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0) {
 
 export async function getNextLessonInfo(groupNumber, subgroup = 0) {
   const lessons = await getTodayLessonsSorted(groupNumber, subgroup);
-  const now = new Date();
+  const now = getMinskTime();
   const currentTime = now.getHours() * 60 + now.getMinutes();
 
   for (const lesson of lessons) {
-    const [startH, startM] = lesson.startLessonTime.split(':').map(Number);
-    const startMin = startH * 60 + startM;
+    const startTime = timeToMinutes(lesson.startLessonTime);
 
-    if (currentTime < startMin) {
-      const minutesUntil = startMin - currentTime;
+    if (currentTime < startTime) {
+      const minutesUntil = startTime - currentTime;
       let timeUntil;
       if (minutesUntil >= 60) {
         const hours = Math.floor(minutesUntil / 60);
@@ -340,17 +345,15 @@ export async function getNextLessonInfo(groupNumber, subgroup = 0) {
 
 export async function getCurrentLessonInfo(groupNumber, subgroup = 0) {
   const lessons = await getTodayLessonsSorted(groupNumber, subgroup);
-  const now = new Date();
+  const now = getMinskTime();
   const currentTime = now.getHours() * 60 + now.getMinutes();
 
   for (const lesson of lessons) {
-    const [startH, startM] = lesson.startLessonTime.split(':').map(Number);
-    const [endH, endM] = lesson.endLessonTime.split(':').map(Number);
-    const startMin = startH * 60 + startM;
-    const endMin = endH * 60 + endM;
+    const startTime = timeToMinutes(lesson.startLessonTime);
+    const endTime = timeToMinutes(lesson.endLessonTime);
 
-    if (currentTime >= startMin && currentTime < endMin) {
-      const minutesLeft = endMin - currentTime;
+    if (currentTime >= startTime && currentTime < endTime) {
+      const minutesLeft = endTime - currentTime;
       return {
         isGoingNow: true,
         message: `[ТЕКУЩАЯ ПАРА]\n${'─'.repeat(30)}\n\n${formatLessonFull(lesson)}\n\nОСТАЛОСЬ: ${minutesLeft}м`,
