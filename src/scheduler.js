@@ -6,8 +6,15 @@ import {
   getAllUsers,
 } from './database.js';
 
-function getCurrentTimeMinutes() {
+// Получаем текущее время в часовом поясе Минска (UTC+3)
+function getMinskTime() {
   const now = new Date();
+  const minskStr = now.toLocaleString('en-US', { timeZone: 'Europe/Minsk' });
+  return new Date(minskStr);
+}
+
+function getCurrentTimeMinutes() {
+  const now = getMinskTime();
   return now.getHours() * 60 + now.getMinutes();
 }
 
@@ -111,17 +118,26 @@ export function startNotificationScheduler(bot) {
   }
 
   cron.schedule('* * * * *', async () => {
+    const minskNow = getMinskTime();
     const currentMinutes = getCurrentTimeMinutes();
-    const today = new Date().toISOString().split('T')[0];
+    const today = minskNow.toISOString().split('T')[0];
+
+    console.log(`[SCHEDULER] Minsk time: ${minskNow.toTimeString().slice(0,5)}, minutes: ${currentMinutes}, date: ${today}`);
 
     const allUsers = getAllUsers();
+    console.log(`[SCHEDULER] Total users: ${allUsers.length}`);
 
     for (const user of allUsers) {
       try {
         const chatId = user.chat_id;
         const lessons = await getLessonsForUser(user);
 
-        if (lessons.length === 0) continue;
+        if (lessons.length === 0) {
+          console.log(`[SCHEDULER] No lessons for user ${chatId}`);
+          continue;
+        }
+
+        console.log(`[SCHEDULER] User ${chatId} has ${lessons.length} lessons today`);
 
         const maxPairNum = Math.max(...lessons.map(l => l.number));
         const lessonByNum = {};
@@ -227,11 +243,13 @@ export function startNotificationScheduler(bot) {
       }
     }
 
+    // Очистка кэша в полночь по минскому времени
     if (currentMinutes === 0) {
       scheduleCache.clear();
       cacheTimestamps.clear();
+      console.log('[SCHEDULER] Cache cleared at midnight');
     }
   });
 
-  console.log('Notification scheduler started');
+  console.log('Notification scheduler started (Minsk timezone UTC+3)');
 }
