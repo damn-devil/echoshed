@@ -1,4 +1,4 @@
-import { createBsuirClient, normalizeSchedule } from 'bsuir-iis-api';
+import { createBsuirClient } from 'bsuir-iis-api';
 import { LESSON_TIMES } from './config.js';
 
 const client = createBsuirClient({
@@ -46,7 +46,7 @@ function getLessonNumber(timeStr) {
 }
 
 function enrichLesson(rawLesson) {
-  const number = getLessonNumber(rawLesson.startLessonTime) || 1;
+  const number = getLessonNumber(rawLesson.startLessonTime) || rawLesson.number || 1;
   const employee = rawLesson.employees && rawLesson.employees.length > 0
     ? {
         firstName: rawLesson.employees[0].firstName || '',
@@ -116,17 +116,15 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
   }
 
   try {
-    let raw;
+    let schedule;
     if (subgroup > 0) {
-      raw = await client.schedule.getGroupBySubgroup(groupNumber, subgroup, { raw: true });
+      schedule = await client.schedule.getGroupBySubgroup(groupNumber, subgroup);
     } else {
-      raw = await client.schedule.getGroup(groupNumber, { raw: true });
+      schedule = await client.schedule.getGroup(groupNumber);
     }
     
-    // API возвращает данные в поле schedules
-    const schedule = normalizeSchedule(raw);
-    
-    console.log(`[API] Fetched schedule for ${cacheKey}. Days available:`, Object.keys(schedule.lessonsByDay || schedule.schedules || {}));
+    console.log(`[API] Fetched schedule for ${cacheKey}. Days:`, Object.keys(schedule.lessonsByDay || {}));
+    console.log(`[API] Total lessons:`, schedule.lessons?.length || 0);
     
     scheduleCache.set(cacheKey, { data: schedule, timestamp: now });
     return schedule;
@@ -137,10 +135,9 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
 }
 
 function getLessonsForDay(schedule, dayKey) {
-  // Пробуем lessonsByDay (нормализованный формат) или schedules (сырой формат API)
-  const lessons = schedule.lessonsByDay?.[dayKey] || schedule.schedules?.[dayKey] || [];
+  const lessons = schedule.lessonsByDay?.[dayKey] || [];
   return lessons
-    .filter(l => l.source === 'schedules' || !l.source)
+    .filter(l => l.source === 'schedules')
     .map(enrichLesson)
     .sort((a, b) => a.number - b.number);
 }
@@ -150,10 +147,10 @@ export async function getTodayLessonsSorted(groupNumber, subgroup = 0) {
   const todayKey = getTodayWeekdayKey();
   
   console.log(`[API] Today is: ${todayKey}`);
-  console.log(`[API] LessonsByDay for today:`, schedule.lessonsByDay?.[todayKey] || schedule.schedules?.[todayKey]);
+  console.log(`[API] Lessons for today:`, schedule.lessonsByDay?.[todayKey]?.length || 0);
   
   if (!todayKey) {
-    console.log(`[API] No lessons found for ${todayKey}`);
+    console.log(`[API] No weekday key for today`);
     return [];
   }
 
@@ -168,10 +165,10 @@ export async function getTomorrowLessonsSorted(groupNumber, subgroup = 0) {
   const tomorrowKey = getTomorrowWeekdayKey();
   
   console.log(`[API] Tomorrow is: ${tomorrowKey}`);
-  console.log(`[API] LessonsByDay for tomorrow:`, schedule.lessonsByDay?.[tomorrowKey] || schedule.schedules?.[tomorrowKey]);
+  console.log(`[API] Lessons for tomorrow:`, schedule.lessonsByDay?.[tomorrowKey]?.length || 0);
   
   if (!tomorrowKey) {
-    console.log(`[API] No lessons found for ${tomorrowKey}`);
+    console.log(`[API] No weekday key for tomorrow`);
     return [];
   }
 
@@ -242,7 +239,7 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0) {
   }
 
   if (!hasLessons) {
-    text += `\n[РАСПИСАНИЕ НА НЕДЕЛЮ]\n\nНЕТ ЗАНЯТИЙ НА ЭТОЙ НЕДЕЛЕ`;
+    text += `\n\nНЕТ ЗАНЯТИЙ НА ЭТОЙ НЕДЕЛЕ`;
   }
 
   return text.trim();
@@ -329,7 +326,7 @@ export async function getCurrentLessonInfo(groupNumber, subgroup = 0) {
 export async function validateGroup(groupNumber) {
   try {
     const schedule = await getGroupSchedule(groupNumber);
-    return schedule && (schedule.lessons !== undefined || schedule.schedules !== undefined);
+    return schedule && (schedule.lessons?.length > 0 || Object.keys(schedule.lessonsByDay || {}).length > 0);
   } catch {
     return false;
   }
