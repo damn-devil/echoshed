@@ -17,7 +17,6 @@ export async function connectDatabase() {
     return false;
   } catch (e) {
     console.error('[DB] ❌ Redis connection error:', e.message);
-    console.error('[DB] Check UPSTASH_REDIS_REST_URL and TOKEN env vars');
     return false;
   }
 }
@@ -43,7 +42,8 @@ export async function registerUser(chatId, groupNumber, subgroup = 0, language =
       updated_at: now,
     };
 
-    await redis.set(`user:${chatIdStr}`, JSON.stringify(user));
+    // Upstash автоматически сериализует объект, не нужно JSON.stringify
+    await redis.set(`user:${chatIdStr}`, user);
     await redis.sadd("all_users", chatIdStr);
     
     console.log(`[DB] ✅ User ${chatIdStr} registered with group ${groupNumber}`);
@@ -57,7 +57,8 @@ export async function registerUser(chatId, groupNumber, subgroup = 0, language =
 export async function getUser(chatId) {
   try {
     const data = await redis.get(`user:${String(chatId)}`);
-    return data ? JSON.parse(data) : null;
+    // Upstash уже возвращает объект, не нужно парсить!
+    return data || null;
   } catch (error) {
     console.error('[DB] ❌ getUser error:', error);
     return null;
@@ -78,7 +79,7 @@ export async function updateGroup(chatId, groupNumber, subgroup = 0) {
     user.group_number = groupNumber;
     user.subgroup = subgroup;
     user.updated_at = new Date().toISOString();
-    await redis.set(`user:${String(chatId)}`, JSON.stringify(user));
+    await redis.set(`user:${String(chatId)}`, user);
     console.log(`[DB] ✅ User ${chatId} updated to group ${groupNumber}`);
   }
 }
@@ -88,7 +89,7 @@ export async function updateNotificationSetting(chatId, setting, value) {
   if (user) {
     user[`notifications_${setting}`] = value;
     user.updated_at = new Date().toISOString();
-    await redis.set(`user:${String(chatId)}`, JSON.stringify(user));
+    await redis.set(`user:${String(chatId)}`, user);
   }
 }
 
