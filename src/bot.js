@@ -12,7 +12,6 @@ import {
   registerUser,
   getUser,
   isUserRegistered,
-  updateGroup,
   updateNotificationSetting,
   updateLanguage,
   getNotificationSettings,
@@ -21,6 +20,18 @@ import {
   getUsersList,
 } from './database.js';
 import { t, getMainMenuKeyboard } from './translations.js';
+
+const MENU_MAP = {
+  '[TODAY]': 'today',
+  '[TOMORROW]': 'tomorrow',
+  '[WEEK]': 'week',
+  '[NEXT]': 'next',
+  '[NOW]': 'now',
+  '[SETTINGS]': 'settings',
+  '[GROUP]': 'group',
+  '[LANG]': 'lang',
+  '[HELP]': 'help',
+};
 
 export function createBot(token) {
   const bot = new TelegramBot(token, { polling: true });
@@ -34,7 +45,6 @@ export function createBot(token) {
     try {
       await bot.answerCallbackQuery(id, options);
     } catch (err) {
-      // Игнорируем ошибки "query is too old" или "query_id_invalid"
       if (!err.response?.description?.includes('query')) {
         console.error('Callback answer error:', err.message);
       }
@@ -52,6 +62,65 @@ export function createBot(token) {
     }
   }
 
+  async function handleCommand(chatId, cmd, lang, user) {
+    try {
+      const sub = user?.subgroup || 0;
+      const group = user?.group_number;
+      let result;
+
+      switch (cmd) {
+        case 'today':
+          result = await getTodayScheduleText(group, sub, lang);
+          break;
+        case 'tomorrow':
+          result = await getTomorrowScheduleText(group, sub, lang);
+          break;
+        case 'week':
+          result = await getWeekScheduleText(group, sub, lang);
+          break;
+        case 'next':
+          result = (await getNextLessonInfo(group, sub, lang)).message;
+          break;
+        case 'now':
+          result = (await getCurrentLessonInfo(group, sub, lang)).message;
+          break;
+        case 'settings':
+          const settings = getNotificationSettings(chatId);
+          await bot.sendMessage(chatId, t('notification_settings', lang), {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: settings.lessonStart ? t('lesson_start_on', lang) : t('lesson_start_off', lang), callback_data: 'toggle_lesson_start' }],
+                [{ text: settings.lessonWarning ? t('lesson_warning_on', lang) : t('lesson_warning_off', lang), callback_data: 'toggle_lesson_warning' }],
+                [{ text: settings.breakStart ? t('break_start_on', lang) : t('break_start_off', lang), callback_data: 'toggle_break_start' }],
+                [{ text: settings.breakWarning ? t('break_warning_on', lang) : t('break_warning_off', lang), callback_data: 'toggle_break_warning' }],
+              ],
+            },
+          });
+          return;
+        case 'group':
+          await bot.sendMessage(chatId, t('send_new_group', lang));
+          return;
+        case 'lang':
+          await bot.sendMessage(chatId, t('lang_select', lang), {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: t('lang_ru', lang), callback_data: 'lang_ru' }, { text: t('lang_en', lang), callback_data: 'lang_en' }],
+              ],
+            },
+          });
+          return;
+        case 'help':
+          await bot.sendMessage(chatId, t('help', lang), { reply_markup: getMenu(chatId) });
+          return;
+        default:
+          return;
+      }
+      await bot.sendMessage(chatId, result, { reply_markup: getMenu(chatId) });
+    } catch (error) {
+      await bot.sendMessage(chatId, t('fetch_failed', lang, { error: error.message }), { reply_markup: getMenu(chatId) });
+    }
+  }
+
   bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     const lang = getUserLanguage(chatId);
@@ -65,133 +134,6 @@ export function createBot(token) {
     } else {
       await bot.sendMessage(chatId, t('welcome', lang));
     }
-  });
-
-  bot.onText(/\/help/, async (msg) => {
-    const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
-    await bot.sendMessage(chatId, t('help', lang), { reply_markup: getMenu(chatId) });
-  });
-
-  bot.onText(/\/today/, async (msg) => {
-    const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
-    if (!isUserRegistered(chatId)) {
-      await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
-      return;
-    }
-    const user = getUser(chatId);
-    try {
-      const schedule = await getTodayScheduleText(user.group_number, user.subgroup || 0, lang);
-      await bot.sendMessage(chatId, schedule, { reply_markup: getMenu(chatId) });
-    } catch (error) {
-      await bot.sendMessage(chatId, t('fetch_failed', lang, { error: error.message }), { reply_markup: getMenu(chatId) });
-    }
-  });
-
-  bot.onText(/\/tomorrow/, async (msg) => {
-    const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
-    if (!isUserRegistered(chatId)) {
-      await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
-      return;
-    }
-    const user = getUser(chatId);
-    try {
-      const schedule = await getTomorrowScheduleText(user.group_number, user.subgroup || 0, lang);
-      await bot.sendMessage(chatId, schedule, { reply_markup: getMenu(chatId) });
-    } catch (error) {
-      await bot.sendMessage(chatId, t('fetch_failed', lang, { error: error.message }), { reply_markup: getMenu(chatId) });
-    }
-  });
-
-  bot.onText(/\/week/, async (msg) => {
-    const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
-    if (!isUserRegistered(chatId)) {
-      await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
-      return;
-    }
-    const user = getUser(chatId);
-    try {
-      const schedule = await getWeekScheduleText(user.group_number, user.subgroup || 0, lang);
-      await bot.sendMessage(chatId, schedule, { reply_markup: getMenu(chatId) });
-    } catch (error) {
-      await bot.sendMessage(chatId, t('fetch_failed', lang, { error: error.message }), { reply_markup: getMenu(chatId) });
-    }
-  });
-
-  bot.onText(/\/next/, async (msg) => {
-    const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
-    if (!isUserRegistered(chatId)) {
-      await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
-      return;
-    }
-    const user = getUser(chatId);
-    try {
-      const info = await getNextLessonInfo(user.group_number, user.subgroup || 0, lang);
-      await bot.sendMessage(chatId, info.message, { reply_markup: getMenu(chatId) });
-    } catch (error) {
-      await bot.sendMessage(chatId, t('fetch_failed', lang, { error: error.message }), { reply_markup: getMenu(chatId) });
-    }
-  });
-
-  bot.onText(/\/now/, async (msg) => {
-    const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
-    if (!isUserRegistered(chatId)) {
-      await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
-      return;
-    }
-    const user = getUser(chatId);
-    try {
-      const info = await getCurrentLessonInfo(user.group_number, user.subgroup || 0, lang);
-      await bot.sendMessage(chatId, info.message, { reply_markup: getMenu(chatId) });
-    } catch (error) {
-      await bot.sendMessage(chatId, t('fetch_failed', lang, { error: error.message }), { reply_markup: getMenu(chatId) });
-    }
-  });
-
-  bot.onText(/\/settings/, async (msg) => {
-    const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
-    if (!isUserRegistered(chatId)) {
-      await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
-      return;
-    }
-    await sendSettingsMessage(bot, chatId, lang);
-  });
-
-  bot.onText(/\/group/, async (msg) => {
-    const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
-    if (!isUserRegistered(chatId)) {
-      await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
-      return;
-    }
-    await bot.sendMessage(chatId, t('send_new_group', lang));
-  });
-
-  bot.onText(/\/lang/, async (msg) => {
-    const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
-    await bot.sendMessage(chatId, t('lang_select', lang), {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: t('lang_ru', lang), callback_data: 'lang_ru' },
-            { text: t('lang_en', lang), callback_data: 'lang_en' },
-          ],
-        ],
-      },
-    });
-  });
-
-  bot.onText(/\/schedule/, async (msg) => {
-    const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
-    await bot.sendMessage(chatId, t('schedule_times', lang), { reply_markup: getMenu(chatId) });
   });
 
   bot.onText(/\/users/, async (msg) => {
@@ -218,25 +160,13 @@ export function createBot(token) {
     await bot.sendMessage(msg.chat.id, t('stats', lang, { count }), { reply_markup: getMenu(msg.chat.id) });
   });
 
-  async function sendSettingsMessage(bot, chatId, lang) {
-    const settings = getNotificationSettings(chatId);
-    await bot.sendMessage(chatId, t('notification_settings', lang), {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: settings.lessonStart ? t('lesson_start_on', lang) : t('lesson_start_off', lang), callback_data: 'toggle_lesson_start' }],
-          [{ text: settings.lessonWarning ? t('lesson_warning_on', lang) : t('lesson_warning_off', lang), callback_data: 'toggle_lesson_warning' }],
-          [{ text: settings.breakStart ? t('break_start_on', lang) : t('break_start_off', lang), callback_data: 'toggle_break_start' }],
-          [{ text: settings.breakWarning ? t('break_warning_on', lang) : t('break_warning_off', lang), callback_data: 'toggle_break_warning' }],
-        ],
-      },
-    });
-  }
-
   bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const data = callbackQuery.data;
     const lang = getUserLanguage(chatId);
     const msgId = callbackQuery.message.message_id;
+
+    console.log(`Callback received: ${data}`); // Для отладки
 
     if (data.startsWith('lang_')) {
       const newLang = data.replace('lang_', '');
@@ -259,30 +189,6 @@ export function createBot(token) {
       return;
     }
 
-    if (data === 'change_group') {
-      await bot.sendMessage(chatId, t('send_new_group', lang));
-      await safeAnswerCallback(callbackQuery.id);
-      return;
-    }
-
-    if (data === 'change_lang') {
-      await bot.sendMessage(chatId, t('lang_select', lang), {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: t('lang_ru', lang), callback_data: 'lang_ru' }, { text: t('lang_en', lang), callback_data: 'lang_en' }],
-          ],
-        },
-      });
-      await safeAnswerCallback(callbackQuery.id);
-      return;
-    }
-
-    if (data === 'help') {
-      await bot.sendMessage(chatId, t('help', lang), { reply_markup: getMenu(chatId) });
-      await safeAnswerCallback(callbackQuery.id);
-      return;
-    }
-
     if (data.startsWith('subgroup_')) {
       const parts = data.split('_');
       const subgroup = parseInt(parts[1]);
@@ -295,7 +201,8 @@ export function createBot(token) {
       }
 
       registerUser(chatId, groupName, subgroup, lang);
-      const subgroupText = subgroup > 0 ? subgroup : '0';
+      const user = getUser(chatId);
+      const subgroupText = user.subgroup > 0 ? user.subgroup : '0';
 
       await safeEditMessage('editMessageText', chatId, msgId, t('registered', lang, { group: groupName, subgroup: subgroupText }), {
         reply_markup: getMenu(chatId),
@@ -304,74 +211,38 @@ export function createBot(token) {
       return;
     }
 
-    switch (data) {
-      case 'today':
-      case 'tomorrow':
-      case 'week':
-      case 'next':
-      case 'now': {
-        if (!isUserRegistered(chatId)) {
-          await safeAnswerCallback(callbackQuery.id, { text: t('not_registered', lang) });
-          return;
-        }
-        const user = getUser(chatId);
-        const sub = user.subgroup || 0;
-        let result;
-        try {
-          if (data === 'today') result = await getTodayScheduleText(user.group_number, sub, lang);
-          else if (data === 'tomorrow') result = await getTomorrowScheduleText(user.group_number, sub, lang);
-          else if (data === 'week') result = await getWeekScheduleText(user.group_number, sub, lang);
-          else if (data === 'next') result = (await getNextLessonInfo(user.group_number, sub, lang)).message;
-          else result = (await getCurrentLessonInfo(user.group_number, sub, lang)).message;
-          await bot.sendMessage(chatId, result, { reply_markup: getMenu(chatId) });
-        } catch (error) {
-          await bot.sendMessage(chatId, t('fetch_failed', lang, { error: error.message }), { reply_markup: getMenu(chatId) });
-        }
-        await safeAnswerCallback(callbackQuery.id);
-        break;
-      }
+    if (data.startsWith('toggle_')) {
+      const settingKey = data.replace('toggle_', '');
+      const settings = getNotificationSettings(chatId);
+      updateNotificationSetting(chatId, settingKey, !settings[settingKey]);
+      const newSettings = getNotificationSettings(chatId);
+      const state = newSettings[settingKey] ? t('enabled', lang) : t('disabled', lang);
 
-      case 'settings': {
-        if (!isUserRegistered(chatId)) {
-          await safeAnswerCallback(callbackQuery.id, { text: t('not_registered', lang) });
-          return;
-        }
-        await safeEditMessage('editMessageText', chatId, msgId, t('notification_settings', lang), {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: getNotificationSettings(chatId).lessonStart ? t('lesson_start_on', lang) : t('lesson_start_off', lang), callback_data: 'toggle_lesson_start' }],
-              [{ text: getNotificationSettings(chatId).lessonWarning ? t('lesson_warning_on', lang) : t('lesson_warning_off', lang), callback_data: 'toggle_lesson_warning' }],
-              [{ text: getNotificationSettings(chatId).breakStart ? t('break_start_on', lang) : t('break_start_off', lang), callback_data: 'toggle_break_start' }],
-              [{ text: getNotificationSettings(chatId).breakWarning ? t('break_warning_on', lang) : t('break_warning_off', lang), callback_data: 'toggle_break_warning' }],
-            ],
-          },
-        });
-        await safeAnswerCallback(callbackQuery.id);
-        break;
-      }
-
-      case 'toggle_lesson_start':
-      case 'toggle_lesson_warning':
-      case 'toggle_break_start':
-      case 'toggle_break_warning': {
-        const settingKey = data.replace('toggle_', '');
-        const settings = getNotificationSettings(chatId);
-        updateNotificationSetting(chatId, settingKey, !settings[settingKey]);
-        const newSettings = getNotificationSettings(chatId);
-        const state = newSettings[settingKey] ? t('enabled', lang) : t('disabled', lang);
-
-        await safeEditMessage('editMessageReplyMarkup', chatId, msgId, {
-          inline_keyboard: [
-            [{ text: newSettings.lessonStart ? t('lesson_start_on', lang) : t('lesson_start_off', lang), callback_data: 'toggle_lesson_start' }],
-            [{ text: newSettings.lessonWarning ? t('lesson_warning_on', lang) : t('lesson_warning_off', lang), callback_data: 'toggle_lesson_warning' }],
-            [{ text: newSettings.breakStart ? t('break_start_on', lang) : t('break_start_off', lang), callback_data: 'toggle_break_start' }],
-            [{ text: newSettings.breakWarning ? t('break_warning_on', lang) : t('break_warning_off', lang), callback_data: 'toggle_break_warning' }],
-          ],
-        });
-        await safeAnswerCallback(callbackQuery.id, { text: state });
-        break;
-      }
+      await safeEditMessage('editMessageReplyMarkup', chatId, msgId, {
+        inline_keyboard: [
+          [{ text: newSettings.lessonStart ? t('lesson_start_on', lang) : t('lesson_start_off', lang), callback_data: 'toggle_lesson_start' }],
+          [{ text: newSettings.lessonWarning ? t('lesson_warning_on', lang) : t('lesson_warning_off', lang), callback_data: 'toggle_lesson_warning' }],
+          [{ text: newSettings.breakStart ? t('break_start_on', lang) : t('break_start_off', lang), callback_data: 'toggle_break_start' }],
+          [{ text: newSettings.breakWarning ? t('break_warning_on', lang) : t('break_warning_off', lang), callback_data: 'toggle_break_warning' }],
+        ],
+      });
+      await safeAnswerCallback(callbackQuery.id, { text: state });
+      return;
     }
+
+    // Обработка кнопок меню из инлайна (если вдруг)
+    if (MENU_MAP[data]) {
+      const user = getUser(chatId);
+      if (isUserRegistered(chatId)) {
+        await handleCommand(chatId, MENU_MAP[data], lang, user);
+      } else {
+        await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
+      }
+      await safeAnswerCallback(callbackQuery.id);
+      return;
+    }
+
+    await safeAnswerCallback(callbackQuery.id);
   });
 
   bot.on('message', async (msg) => {
@@ -379,10 +250,34 @@ export function createBot(token) {
     const text = msg.text;
     const lang = getUserLanguage(chatId);
 
-    if (!text || text.startsWith('/')) return;
+    if (!text) return;
+
+    // Обработка команд из меню
+    if (MENU_MAP[text]) {
+      if (isUserRegistered(chatId)) {
+        const user = getUser(chatId);
+        await handleCommand(chatId, MENU_MAP[text], lang, user);
+      } else {
+        await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
+      }
+      return;
+    }
+
+    if (text.startsWith('/')) {
+      const cmd = text.split('@')[0].substring(1);
+      if (['today', 'tomorrow', 'week', 'next', 'now', 'settings', 'group', 'lang', 'help', 'schedule'].includes(cmd)) {
+        if (isUserRegistered(chatId)) {
+          const user = getUser(chatId);
+          await handleCommand(chatId, cmd, lang, user);
+        } else {
+          await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
+        }
+        return;
+      }
+      return;
+    }
 
     const groupPattern = /^\d{4,6}$/;
-
     if (groupPattern.test(text.trim())) {
       const groupNumber = text.trim();
       const isValid = await validateGroup(groupNumber);
