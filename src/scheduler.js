@@ -6,9 +6,7 @@ import {
   getAllUsers,
 } from './database.js';
 
-// Получаем текущее время в часовом поясе Минска (UTC+3)
 function getMinskTime() {
-  // Minsk is UTC+3
   const now = new Date();
   const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
   return new Date(utc + (3 * 3600000));
@@ -123,22 +121,17 @@ export function startNotificationScheduler(bot) {
     const currentMinutes = getCurrentTimeMinutes();
     const today = minskNow.toISOString().split('T')[0];
 
-    console.log(`[SCHEDULER] Minsk time: ${minskNow.toTimeString().slice(0,5)}, minutes: ${currentMinutes}, date: ${today}`);
+    console.log(`[SCHEDULER] Minsk time: ${minskNow.toTimeString().slice(0,5)}, minutes: ${currentMinutes}`);
 
-    const allUsers = getAllUsers();
-    console.log(`[SCHEDULER] Total users: ${allUsers.length}`);
+    const allUsers = await getAllUsers();
+    console.log(`[SCHEDULER] Found ${allUsers.length} users`);
 
     for (const user of allUsers) {
       try {
         const chatId = user.chat_id;
         const lessons = await getLessonsForUser(user);
 
-        if (lessons.length === 0) {
-          console.log(`[SCHEDULER] No lessons for user ${chatId}`);
-          continue;
-        }
-
-        console.log(`[SCHEDULER] User ${chatId} has ${lessons.length} lessons today`);
+        if (lessons.length === 0) continue;
 
         const maxPairNum = Math.max(...lessons.map(l => l.number));
         const lessonByNum = {};
@@ -152,65 +145,63 @@ export function startNotificationScheduler(bot) {
           const nextLesson = lessonByNum[lesson.number + 1];
           const isLast = lesson.number === maxPairNum;
 
+          // Helper to check time window (allows 2 min delay)
+          const isTime = (eventTime) => currentMinutes >= eventTime && currentMinutes < eventTime + 2;
+
           // 1. Утро — за 30 мин до первой пары
-          if (lesson.number === 1) {
-            const morningTime = startTime - 30;
-            if (currentMinutes === morningTime) {
-              const key = `morning_reminder`;
-              if (!wasNotificationSent(chatId, key, 0, today)) {
-                const msg = random(MORNING_MESSAGES).replace('{lesson}', formatLessonCard(lesson));
-                bot.sendMessage(chatId, msg).catch(() => {});
-                logNotification(chatId, key, 0);
-                console.log(`[NOTIF] Morning → ${chatId}`);
-              }
+          if (lesson.number === 1 && isTime(startTime - 30)) {
+            const key = `morning_reminder`;
+            if (!await wasNotificationSent(chatId, key, 0, today)) {
+              const msg = random(MORNING_MESSAGES).replace('{lesson}', formatLessonCard(lesson));
+              bot.sendMessage(chatId, msg).catch(() => {});
+              await logNotification(chatId, key, 0);
+              console.log(`[NOTIF] Morning → ${chatId}`);
             }
           }
 
           // 2. Начало пары
-          if (currentMinutes === startTime) {
+          if (isTime(startTime)) {
             const key = `lesson_start_${lesson.number}`;
-            if (!wasNotificationSent(chatId, key, lesson.number, today)) {
+            if (!await wasNotificationSent(chatId, key, lesson.number, today)) {
               const msg = random(LESSON_START_MESSAGES).replace('{lesson}', formatLessonCard(lesson));
               bot.sendMessage(chatId, msg).catch(() => {});
-              logNotification(chatId, key, lesson.number);
+              await logNotification(chatId, key, lesson.number);
               console.log(`[NOTIF] Start lesson ${lesson.number} → ${chatId}`);
             }
           }
 
-          // 3. Начало пятиминутки — через 40 мин после начала
-          const miniBreakStart = startTime + 40;
-          if (currentMinutes === miniBreakStart) {
+          // 3. Начало пятиминутки — через 40 мин
+          if (isTime(startTime + 40)) {
             const key = `minibreak_start_${lesson.number}`;
-            if (!wasNotificationSent(chatId, key, lesson.number, today)) {
+            if (!await wasNotificationSent(chatId, key, lesson.number, today)) {
               const msg = random(MINIBREAK_START_MESSAGES)
                 .replace('{number}', lesson.number)
                 .replace('{subject}', lesson.subject);
               bot.sendMessage(chatId, msg).catch(() => {});
-              logNotification(chatId, key, lesson.number);
-              console.log(`[NOTIF] Minibreak start lesson ${lesson.number} → ${chatId}`);
+              await logNotification(chatId, key, lesson.number);
+              console.log(`[NOTIF] Minibreak start → ${chatId}`);
             }
           }
 
-          // 4. Конец пятиминутки — через 45 мин после начала
-          const miniBreakEnd = startTime + 45;
-          if (currentMinutes === miniBreakEnd) {
+          // 4. Конец пятиминутки — через 45 мин
+          if (isTime(startTime + 45)) {
             const key = `minibreak_end_${lesson.number}`;
-            if (!wasNotificationSent(chatId, key, lesson.number, today)) {
+            if (!await wasNotificationSent(chatId, key, lesson.number, today)) {
               const left = endTime - currentMinutes;
               const msg = random(MINIBREAK_END_MESSAGES)
                 .replace('{number}', lesson.number)
                 .replace('{subject}', lesson.subject)
-                .replace('{left}', left);
+                .replace('{left}', Math.max(0, left));
               bot.sendMessage(chatId, msg).catch(() => {});
-              logNotification(chatId, key, lesson.number);
-              console.log(`[NOTIF] Minibreak end lesson ${lesson.number} → ${chatId}`);
+              await logNotification(chatId, key, lesson.number);
+              console.log(`[NOTIF] Minibreak end → ${chatId}`);
             }
           }
 
-          // 5. Конец пары + следующая пара
-          if (currentMinutes === endTime && nextLesson) {
+          // 5. Конец пары + следующая
+          if (nextLesson && isTime(endTime)) {
             const key = `lesson_end_${lesson.number}`;
-            if (!wasNotificationSent(chatId, key, lesson.number, today)) {
+            if (!await wasNotificationSent(chatId, key, lesson.number, today)) {
               const breakStart = lesson.endLessonTime;
               const breakEnd = nextLesson.startLessonTime;
               const breakDuration = timeToMinutes(breakEnd) - timeToMinutes(breakStart);
@@ -221,18 +212,18 @@ export function startNotificationScheduler(bot) {
                 .replace('{breakDuration}', breakDuration)
                 .replace('{next}', formatLessonCard(nextLesson));
               bot.sendMessage(chatId, msg).catch(() => {});
-              logNotification(chatId, key, lesson.number);
-              console.log(`[NOTIF] End lesson ${lesson.number} + next → ${chatId}`);
+              await logNotification(chatId, key, lesson.number);
+              console.log(`[NOTIF] End lesson ${lesson.number} → ${chatId}`);
             }
           }
 
-          // 6. Последняя пара закончилась — день завершён
-          if (currentMinutes === endTime && isLast) {
+          // 6. День завершён
+          if (isLast && isTime(endTime)) {
             const key = `day_complete`;
-            if (!wasNotificationSent(chatId, key, lesson.number, today)) {
+            if (!await wasNotificationSent(chatId, key, lesson.number, today)) {
               const msg = random(DAY_COMPLETE_MESSAGES).replace('{subject}', lesson.subject);
               bot.sendMessage(chatId, msg).catch(() => {});
-              logNotification(chatId, key, lesson.number);
+              await logNotification(chatId, key, lesson.number);
               console.log(`[NOTIF] Day complete → ${chatId}`);
             }
           }
@@ -240,17 +231,10 @@ export function startNotificationScheduler(bot) {
         }
 
       } catch (error) {
-        console.error(`Error sending notifications to ${user.chat_id}:`, error.message);
+        console.error(`Error for user ${user.chat_id}:`, error.message);
       }
-    }
-
-    // Очистка кэша в полночь по минскому времени
-    if (currentMinutes === 0) {
-      scheduleCache.clear();
-      cacheTimestamps.clear();
-      console.log('[SCHEDULER] Cache cleared at midnight');
     }
   });
 
-  console.log('Notification scheduler started (Minsk timezone UTC+3)');
+  console.log('Notification scheduler started');
 }
