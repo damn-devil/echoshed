@@ -31,9 +31,10 @@ const LESSON_TYPE_MAP = {
 };
 
 function getMinskTime() {
+  // Minsk is UTC+3
   const now = new Date();
-  const minskStr = now.toLocaleString('en-US', { timeZone: 'Europe/Minsk' });
-  return new Date(minskStr);
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  return new Date(utc + (3 * 3600000));
 }
 
 function getLessonNumber(timeStr) {
