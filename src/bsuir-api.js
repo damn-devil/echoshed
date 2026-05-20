@@ -1,6 +1,6 @@
 import { createBsuirClient, normalizeSchedule } from 'bsuir-iis-api';
 import { LESSON_TIMES } from './config.js';
-import { t, LESSON_TYPE_KEYS, WEEKDAY_KEYS } from './translations.js';
+import { t, LESSON_TYPE_KEYS } from './translations.js';
 
 const client = createBsuirClient({
   cache: { ttlMs: 5 * 60 * 1000, maxEntries: 200 },
@@ -11,13 +11,24 @@ const client = createBsuirClient({
 const scheduleCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
 
+// Ключи должны совпадать с тем, что возвращает API (на русском)
 const WEEKDAY_MAP = {
-  1: 'monday',
-  2: 'tuesday',
-  3: 'wednesday',
-  4: 'thursday',
-  5: 'friday',
-  6: 'saturday',
+  1: 'Понедельник',
+  2: 'Вторник',
+  3: 'Среда',
+  4: 'Четверг',
+  5: 'Пятница',
+  6: 'Суббота',
+};
+
+// Маппинг для переводов
+const DAY_TRANSLATION_KEYS = {
+  'Понедельник': 'monday',
+  'Вторник': 'tuesday',
+  'Среда': 'wednesday',
+  'Четверг': 'thursday',
+  'Пятница': 'friday',
+  'Суббота': 'saturday',
 };
 
 function getLessonNumber(timeStr) {
@@ -114,10 +125,13 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
       raw = await client.schedule.getGroup(groupNumber, { raw: true });
     }
     const schedule = normalizeSchedule(raw);
+    
+    console.log(`[API] Fetched schedule for ${cacheKey}. Days available:`, Object.keys(schedule.lessonsByDay || {}));
+    
     scheduleCache.set(cacheKey, { data: schedule, timestamp: now });
     return schedule;
   } catch (error) {
-    console.error(`Error fetching schedule for group ${groupNumber} subgroup ${subgroup}:`, error.message);
+    console.error(`[API] Error fetching schedule for ${cacheKey}:`, error.message);
     throw new Error('Failed to fetch schedule. Check group number.');
   }
 }
@@ -125,7 +139,13 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
 export async function getTodayLessonsSorted(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
   const todayKey = getTodayWeekdayKey();
-  if (!todayKey || !schedule.lessonsByDay[todayKey]) return [];
+  
+  console.log(`[API] Today is: ${todayKey}`);
+  
+  if (!todayKey || !schedule.lessonsByDay[todayKey]) {
+    console.log(`[API] No lessons found for ${todayKey}`);
+    return [];
+  }
 
   const lessons = schedule.lessonsByDay[todayKey]
     .filter(l => l.source === 'schedules')
@@ -186,6 +206,7 @@ export async function getTomorrowScheduleText(groupNumber, subgroup = 0, lang = 
 
 export async function getWeekScheduleText(groupNumber, subgroup = 0, lang = 'ru') {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
+  const weekdayOrder = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 
   let text = subgroup > 0 ? t('week_schedule_sub', lang, { subgroup }) : t('week_schedule', lang);
   text += '\n';
@@ -193,7 +214,7 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0, lang = 'ru'
 
   let hasLessons = false;
 
-  for (const dayKey of WEEKDAY_KEYS) {
+  for (const dayKey of weekdayOrder) {
     const rawLessons = schedule.lessonsByDay[dayKey];
     if (!rawLessons || rawLessons.length === 0) continue;
 
@@ -205,7 +226,8 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0, lang = 'ru'
     if (lessons.length === 0) continue;
 
     hasLessons = true;
-    text += `\n[${t(dayKey, lang).toUpperCase()}]\n`;
+    const transKey = DAY_TRANSLATION_KEYS[dayKey] || dayKey;
+    text += `\n[${t(transKey, lang).toUpperCase()}]\n`;
     text += '─'.repeat(20) + '\n';
 
     for (const lesson of lessons) {
