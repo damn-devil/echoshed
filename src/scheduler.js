@@ -7,9 +7,7 @@ import {
   logNotification,
   wasNotificationSent,
   getAllUsers,
-  getUserLanguage,
 } from './database.js';
-import { t } from './translations.js';
 
 const WARNING_MINUTES = 3;
 
@@ -18,98 +16,89 @@ function getCurrentTimeMinutes() {
   return now.getHours() * 60 + now.getMinutes();
 }
 
-function formatBreakWarning(breakInfo, currentLesson, lang) {
-  return t('break_warning', lang, {
-    min: WARNING_MINUTES,
-    duration: breakInfo.duration,
-    start: breakInfo.start,
-    end: breakInfo.end,
-  });
+function formatBreakWarning(breakInfo, currentLesson) {
+  return `[ПРЕДУПРЕЖДЕНИЕ О ПЕРЕМЕНЕ]\n\nТЕКУЩАЯ ПАРА ЗАКАНЧИВАЕТСЯ ЧЕРЕЗ ${WARNING_MINUTES} МИН\nДЛИТЕЛЬНОСТЬ ПЕРЕМЕНЫ: ${breakInfo.duration} МИН\nВРЕМЯ ПЕРЕМЕНЫ: ${breakInfo.start} - ${breakInfo.end}`;
 }
 
-function formatBreakStart(breakInfo, nextLesson, lang) {
-  let text = t('break_started', lang, {
-    duration: breakInfo.duration,
-    start: breakInfo.start,
-    end: breakInfo.end,
-  });
+function formatBreakStart(breakInfo, nextLesson) {
+  let text = `[ПЕРЕМЕНА НАЧАЛАСЬ]\n\nДЛИТЕЛЬНОСТЬ ПЕРЕМЕНЫ: ${breakInfo.duration} МИН\nВРЕМЯ ПЕРЕМЕНЫ: ${breakInfo.start} - ${breakInfo.end}`;
 
   if (nextLesson) {
     const auditoryInfo = parseAuditoryInfo(nextLesson.auditory);
-    text += `\n\n${t('next_lesson_label', lang)}: ${nextLesson.subject}`;
+    text += `\n\nСЛЕДУЮЩАЯ ПАРА: ${nextLesson.subject}`;
     if (nextLesson.lessonTypeAbbrev) text += ` (${nextLesson.lessonTypeAbbrev})`;
     if (auditoryInfo.room) {
-      text += `\n${t('room', lang)}: ${auditoryInfo.room}`;
-      if (auditoryInfo.building) text += ` (${t('bldg', lang)} ${auditoryInfo.building})`;
+      text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
+      if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
     }
-    if (nextLesson.numSubgroup > 0) text += `\n${t('subgroup', lang)}: ${nextLesson.numSubgroup}`;
+    if (nextLesson.numSubgroup > 0) text += `\nПОДГРУППА: ${nextLesson.numSubgroup}`;
     const timeInfo = LESSON_TIMES[nextLesson.number - 1];
-    if (timeInfo) text += `\n${t('start', lang)}: ${timeInfo.start}`;
+    if (timeInfo) text += `\nНАЧАЛО: ${timeInfo.start}`;
   }
 
   return text;
 }
 
-function formatLessonWarning(lesson, lang) {
+function formatLessonWarning(lesson) {
   const timeInfo = LESSON_TIMES[lesson.number - 1];
   const auditoryInfo = parseAuditoryInfo(lesson.auditory);
 
-  let text = t('lesson_warning', lang, { num: lesson.number, min: WARNING_MINUTES });
-  text += `\n${t('subject', lang)}: ${lesson.subject}`;
+  let text = `[ПРЕДУПРЕЖДЕНИЕ]\n\nПАРА ${lesson.number} НАЧНЕТСЯ ЧЕРЕЗ ${WARNING_MINUTES} МИН`;
+  text += `\nПРЕДМЕТ: ${lesson.subject}`;
   if (lesson.lessonTypeAbbrev) text += ` (${lesson.lessonTypeAbbrev})`;
   if (auditoryInfo.room) {
-    text += `\n${t('room', lang)}: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (${t('bldg', lang)} ${auditoryInfo.building})`;
+    text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
   }
-  if (lesson.numSubgroup > 0) text += `\n${t('subgroup', lang)}: ${lesson.numSubgroup}`;
-  if (timeInfo) text += `\n${t('time', lang)}: ${timeInfo.start} - ${timeInfo.end}`;
+  if (lesson.numSubgroup > 0) text += `\nПОДГРУППА: ${lesson.numSubgroup}`;
+  if (timeInfo) text += `\nВРЕМЯ: ${timeInfo.start} - ${timeInfo.end}`;
 
   return text;
 }
 
-function formatLessonStart(lesson, lang) {
+function formatLessonStart(lesson) {
   const timeInfo = LESSON_TIMES[lesson.number - 1];
   const auditoryInfo = parseAuditoryInfo(lesson.auditory);
   const teacher = lesson.employee
     ? `${lesson.employee.firstName} ${lesson.employee.lastName}`
     : '';
 
-  let text = t('lesson_started', lang, { num: lesson.number });
-  text += `\n${t('subject', lang)}: ${lesson.subject}`;
+  let text = `[ПАРА НАЧАЛАСЬ]\n\nПАРА: ${lesson.number}`;
+  text += `\nПРЕДМЕТ: ${lesson.subject}`;
   if (lesson.lessonTypeAbbrev) text += ` (${lesson.lessonTypeAbbrev})`;
-  if (teacher) text += `\n${t('teacher', lang)}: ${teacher}`;
+  if (teacher) text += `\nПРЕПОДАВАТЕЛЬ: ${teacher}`;
   if (auditoryInfo.room) {
-    text += `\n${t('room', lang)}: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (${t('bldg', lang)} ${auditoryInfo.building})`;
+    text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
   }
-  if (lesson.numSubgroup > 0) text += `\n${t('subgroup', lang)}: ${lesson.numSubgroup}`;
-  if (timeInfo) text += `\n${t('time', lang)}: ${timeInfo.start} - ${timeInfo.end}`;
+  if (lesson.numSubgroup > 0) text += `\nПОДГРУППА: ${lesson.numSubgroup}`;
+  if (timeInfo) text += `\nВРЕМЯ: ${timeInfo.start} - ${timeInfo.end}`;
 
   return text;
 }
 
-function formatNextAfterEnd(lesson, lang) {
+function formatNextAfterEnd(lesson) {
   const timeInfo = LESSON_TIMES[lesson.number - 1];
   const auditoryInfo = parseAuditoryInfo(lesson.auditory);
 
-  let text = `⏭️ ${t('next_lesson', lang)}\n`;
+  let text = `⏭️ СЛЕДУЮЩАЯ ПАРА\n`;
   text += `──────────────────────────────\n\n`;
-  text += `${t('lesson', lang)}: ${lesson.number}\n`;
-  text += `${t('subject', lang)}: ${lesson.subject}`;
+  text += `ПАРА: ${lesson.number}\n`;
+  text += `ПРЕДМЕТ: ${lesson.subject}`;
   if (lesson.lessonTypeAbbrev) text += ` (${lesson.lessonTypeAbbrev})`;
-  if (lesson.employee) text += `\n${t('teacher', lang)}: ${lesson.employee.firstName} ${lesson.employee.lastName}`;
+  if (lesson.employee) text += `\nПРЕПОДАВАТЕЛЬ: ${lesson.employee.firstName} ${lesson.employee.lastName}`;
   if (auditoryInfo.room) {
-    text += `\n${t('room', lang)}: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (${t('bldg', lang)} ${auditoryInfo.building})`;
+    text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
   }
-  if (lesson.numSubgroup > 0) text += `\n${t('subgroup', lang)}: ${lesson.numSubgroup}`;
-  if (timeInfo) text += `\n${t('start', lang)}: ${timeInfo.start}`;
+  if (lesson.numSubgroup > 0) text += `\nПОДГРУППА: ${lesson.numSubgroup}`;
+  if (timeInfo) text += `\nНАЧАЛО: ${timeInfo.start}`;
 
   return text;
 }
 
-function formatLastLessonEnd(lastLesson, lang) {
-  return t('day_complete', lang, { subject: lastLesson.subject });
+function formatLastLessonEnd(lastLesson) {
+  return `[ДЕНЬ ЗАВЕРШЕН]\n\nПОСЛЕДНЯЯ ПАРА ЗАВЕРШИЛАСЬ: ${lastLesson.subject}\nСТАТУС: СВОБОДЕН`;
 }
 
 export function startNotificationScheduler(bot) {
@@ -148,7 +137,6 @@ export function startNotificationScheduler(bot) {
       try {
         const chatId = user.chat_id;
         const subgroup = user.subgroup || 0;
-        const lang = getUserLanguage(chatId);
         const settings = getNotificationSettings(chatId);
         const lessons = await getLessonsForUser(user);
 
@@ -171,7 +159,7 @@ export function startNotificationScheduler(bot) {
           if (settings.lessonWarning && currentMinutes === startMin - WARNING_MINUTES) {
             const key = `lesson_warning_${lesson.number}`;
             if (!wasNotificationSent(chatId, key, lesson.number, today)) {
-              bot.sendMessage(chatId, formatLessonWarning(lesson, lang)).catch(() => {});
+              bot.sendMessage(chatId, formatLessonWarning(lesson)).catch(() => {});
               logNotification(chatId, key, lesson.number);
             }
           }
@@ -179,7 +167,7 @@ export function startNotificationScheduler(bot) {
           if (settings.lessonStart && currentMinutes === startMin) {
             const key = `lesson_start_${lesson.number}`;
             if (!wasNotificationSent(chatId, key, lesson.number, today)) {
-              bot.sendMessage(chatId, formatLessonStart(lesson, lang)).catch(() => {});
+              bot.sendMessage(chatId, formatLessonStart(lesson)).catch(() => {});
               logNotification(chatId, key, lesson.number);
             }
           }
@@ -189,7 +177,7 @@ export function startNotificationScheduler(bot) {
             if (nextLesson) {
               const key = `next_after_end_${lesson.number}`;
               if (!wasNotificationSent(chatId, key, lesson.number, today)) {
-                bot.sendMessage(chatId, formatNextAfterEnd(nextLesson, lang)).catch(() => {});
+                bot.sendMessage(chatId, formatNextAfterEnd(nextLesson)).catch(() => {});
                 logNotification(chatId, key, lesson.number);
               }
             }
@@ -200,7 +188,7 @@ export function startNotificationScheduler(bot) {
             if (breakInfo) {
               const key = `break_warning_${lesson.number}`;
               if (!wasNotificationSent(chatId, key, lesson.number, today)) {
-                bot.sendMessage(chatId, formatBreakWarning(breakInfo, lesson, lang)).catch(() => {});
+                bot.sendMessage(chatId, formatBreakWarning(breakInfo, lesson)).catch(() => {});
                 logNotification(chatId, key, lesson.number);
               }
             }
@@ -214,7 +202,7 @@ export function startNotificationScheduler(bot) {
             const nextLesson = lessonByNum[breakInfo.after + 1];
             const key = `break_start_${breakInfo.after}`;
             if (!wasNotificationSent(chatId, key, breakInfo.after, today)) {
-              bot.sendMessage(chatId, formatBreakStart(breakInfo, nextLesson, lang)).catch(() => {});
+              bot.sendMessage(chatId, formatBreakStart(breakInfo, nextLesson)).catch(() => {});
               logNotification(chatId, key, breakInfo.after);
             }
           }
@@ -226,7 +214,7 @@ export function startNotificationScheduler(bot) {
           if (currentMinutes === lastEndTime) {
             const key = `last_lesson_end`;
             if (!wasNotificationSent(chatId, key, maxPairNum, today)) {
-              bot.sendMessage(chatId, formatLastLessonEnd(lastLesson, lang)).catch(() => {});
+              bot.sendMessage(chatId, formatLastLessonEnd(lastLesson)).catch(() => {});
               logNotification(chatId, key, maxPairNum);
             }
           }
