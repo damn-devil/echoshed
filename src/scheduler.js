@@ -88,6 +88,26 @@ function formatLessonStart(lesson, lang) {
   return text;
 }
 
+function formatNextAfterEnd(lesson, lang) {
+  const timeInfo = LESSON_TIMES[lesson.number - 1];
+  const auditoryInfo = parseAuditoryInfo(lesson.auditory);
+
+  let text = `⏭️ ${t('next_lesson', lang)}\n`;
+  text += `──────────────────────────────\n\n`;
+  text += `${t('lesson', lang)}: ${lesson.number}\n`;
+  text += `${t('subject', lang)}: ${lesson.subject}`;
+  if (lesson.lessonTypeAbbrev) text += ` (${lesson.lessonTypeAbbrev})`;
+  if (lesson.employee) text += `\n${t('teacher', lang)}: ${lesson.employee.firstName} ${lesson.employee.lastName}`;
+  if (auditoryInfo.room) {
+    text += `\n${t('room', lang)}: ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (${t('bldg', lang)} ${auditoryInfo.building})`;
+  }
+  if (lesson.numSubgroup > 0) text += `\n${t('subgroup', lang)}: ${lesson.numSubgroup}`;
+  if (timeInfo) text += `\n${t('start', lang)}: ${timeInfo.start}`;
+
+  return text;
+}
+
 function formatLastLessonEnd(lastLesson, lang) {
   return t('day_complete', lang, { subject: lastLesson.subject });
 }
@@ -161,6 +181,17 @@ export function startNotificationScheduler(bot) {
             if (!wasNotificationSent(chatId, key, lesson.number, today)) {
               bot.sendMessage(chatId, formatLessonStart(lesson, lang)).catch(() => {});
               logNotification(chatId, key, lesson.number);
+            }
+          }
+
+          if (currentMinutes === endMin) {
+            const nextLesson = lessonByNum[lesson.number + 1];
+            if (nextLesson) {
+              const key = `next_after_end_${lesson.number}`;
+              if (!wasNotificationSent(chatId, key, lesson.number, today)) {
+                bot.sendMessage(chatId, formatNextAfterEnd(nextLesson, lang)).catch(() => {});
+                logNotification(chatId, key, lesson.number);
+              }
             }
           }
 
