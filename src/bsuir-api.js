@@ -117,14 +117,9 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
   }
 
   try {
-    let schedule;
-    if (subgroup > 0) {
-      console.log(`[API] Fetching schedule for ${groupNumber} subgroup ${subgroup}...`);
-      schedule = await client.schedule.getGroupBySubgroup(groupNumber, subgroup);
-    } else {
-      console.log(`[API] Fetching schedule for ${groupNumber}...`);
-      schedule = await client.schedule.getGroup(groupNumber);
-    }
+    // getGroupBySubgroup часто возвращает пустые данные, поэтому всегда берём полное расписание
+    console.log(`[API] Fetching schedule for ${groupNumber}...`);
+    const schedule = await client.schedule.getGroup(groupNumber);
     
     console.log(`[API] Response keys:`, Object.keys(schedule || {}));
     console.log(`[API] lessonsByDay exists:`, !!schedule?.lessonsByDay);
@@ -134,9 +129,6 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
     if (schedule?.lessonsByDay) {
       for (const [day, lessons] of Object.entries(schedule.lessonsByDay)) {
         console.log(`[API] ${day}: ${lessons?.length || 0} lessons`);
-        if (lessons?.length > 0) {
-          console.log(`[API] First lesson source:`, lessons[0].source);
-        }
       }
     }
     
@@ -148,7 +140,7 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
   }
 }
 
-function getLessonsForDay(schedule, dayKey) {
+function getLessonsForDay(schedule, dayKey, subgroup = 0) {
   const rawLessons = schedule?.lessonsByDay?.[dayKey] || [];
   console.log(`[API] Raw lessons for ${dayKey}:`, rawLessons.length);
   
@@ -157,16 +149,26 @@ function getLessonsForDay(schedule, dayKey) {
     console.log(`[API] First lesson source:`, rawLessons[0].source);
   }
   
-  const filtered = rawLessons.filter(l => l.source === 'schedules');
+  let filtered = rawLessons.filter(l => l.source === 'schedules');
   console.log(`[API] After source filter (schedules):`, filtered.length);
   
   // Если фильтр убрал всё — пробуем без фильтра
-  const lessonsToUse = filtered.length > 0 ? filtered : rawLessons;
   if (filtered.length === 0 && rawLessons.length > 0) {
     console.log(`[API] Source filter removed all lessons, using unfiltered`);
+    filtered = rawLessons;
   }
   
-  const enriched = lessonsToUse.map(enrichLesson).sort((a, b) => a.number - b.number);
+  // Фильтрация по подгруппе: показываем уроки для выбранной подгруппы + общие (numSubgroup=0)
+  if (subgroup > 0) {
+    const beforeSubgroupFilter = filtered.length;
+    filtered = filtered.filter(l => {
+      const sg = l.numSubgroup || 0;
+      return sg === 0 || sg === subgroup;
+    });
+    console.log(`[API] After subgroup filter (${subgroup}):`, filtered.length, `(was ${beforeSubgroupFilter})`);
+  }
+  
+  const enriched = filtered.map(enrichLesson).sort((a, b) => a.number - b.number);
   console.log(`[API] After enrich:`, enriched.length);
   
   return enriched;
@@ -179,8 +181,6 @@ export async function getTodayLessonsSorted(groupNumber, subgroup = 0) {
   const todayKey = getTodayWeekdayKey();
   
   console.log(`[API] Today weekday key: ${todayKey}`);
-  console.log(`[API] schedule object:`, schedule ? 'exists' : 'null/undefined');
-  console.log(`[API] schedule.lessonsByDay:`, schedule?.lessonsByDay ? 'exists' : 'null/undefined');
   
   if (!todayKey) {
     console.log(`[API] No weekday key for today (Sunday?)`);
@@ -192,7 +192,7 @@ export async function getTodayLessonsSorted(groupNumber, subgroup = 0) {
     return [];
   }
 
-  const lessons = getLessonsForDay(schedule, todayKey);
+  const lessons = getLessonsForDay(schedule, todayKey, subgroup);
   console.log(`[API] Final lessons for today:`, lessons.length);
   
   return lessons;
@@ -214,7 +214,7 @@ export async function getTomorrowLessonsSorted(groupNumber, subgroup = 0) {
     return [];
   }
 
-  const lessons = getLessonsForDay(schedule, tomorrowKey);
+  const lessons = getLessonsForDay(schedule, tomorrowKey, subgroup);
   console.log(`[API] Final lessons for tomorrow:`, lessons.length);
   
   return lessons;
@@ -267,7 +267,7 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0) {
   let hasLessons = false;
 
   for (const dayKey of weekdayOrder) {
-    const lessons = getLessonsForDay(schedule, dayKey);
+    const lessons = getLessonsForDay(schedule, dayKey, subgroup);
 
     if (lessons.length === 0) continue;
 
