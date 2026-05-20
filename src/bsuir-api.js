@@ -112,19 +112,33 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
   const now = Date.now();
   const cached = scheduleCache.get(cacheKey);
   if (cached && now - cached.timestamp < CACHE_TTL) {
+    console.log(`[API] Cache hit for ${cacheKey}`);
     return cached.data;
   }
 
   try {
     let schedule;
     if (subgroup > 0) {
+      console.log(`[API] Fetching schedule for ${groupNumber} subgroup ${subgroup}...`);
       schedule = await client.schedule.getGroupBySubgroup(groupNumber, subgroup);
     } else {
+      console.log(`[API] Fetching schedule for ${groupNumber}...`);
       schedule = await client.schedule.getGroup(groupNumber);
     }
     
-    console.log(`[API] Fetched schedule for ${cacheKey}. Days:`, Object.keys(schedule.lessonsByDay || {}));
-    console.log(`[API] Total lessons:`, schedule.lessons?.length || 0);
+    console.log(`[API] Response keys:`, Object.keys(schedule || {}));
+    console.log(`[API] lessonsByDay exists:`, !!schedule?.lessonsByDay);
+    console.log(`[API] lessonsByDay days:`, Object.keys(schedule?.lessonsByDay || {}));
+    console.log(`[API] Total lessons:`, schedule?.lessons?.length || 0);
+    
+    if (schedule?.lessonsByDay) {
+      for (const [day, lessons] of Object.entries(schedule.lessonsByDay)) {
+        console.log(`[API] ${day}: ${lessons?.length || 0} lessons`);
+        if (lessons?.length > 0) {
+          console.log(`[API] First lesson source:`, lessons[0].source);
+        }
+      }
+    }
     
     scheduleCache.set(cacheKey, { data: schedule, timestamp: now });
     return schedule;
@@ -135,28 +149,52 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
 }
 
 function getLessonsForDay(schedule, dayKey) {
-  const lessons = schedule.lessonsByDay?.[dayKey] || [];
-  return lessons
-    .filter(l => l.source === 'schedules')
-    .map(enrichLesson)
-    .sort((a, b) => a.number - b.number);
+  const rawLessons = schedule?.lessonsByDay?.[dayKey] || [];
+  console.log(`[API] Raw lessons for ${dayKey}:`, rawLessons.length);
+  
+  if (rawLessons.length > 0) {
+    console.log(`[API] First lesson raw keys:`, Object.keys(rawLessons[0]));
+    console.log(`[API] First lesson source:`, rawLessons[0].source);
+  }
+  
+  const filtered = rawLessons.filter(l => l.source === 'schedules');
+  console.log(`[API] After source filter (schedules):`, filtered.length);
+  
+  // Если фильтр убрал всё — пробуем без фильтра
+  const lessonsToUse = filtered.length > 0 ? filtered : rawLessons;
+  if (filtered.length === 0 && rawLessons.length > 0) {
+    console.log(`[API] Source filter removed all lessons, using unfiltered`);
+  }
+  
+  const enriched = lessonsToUse.map(enrichLesson).sort((a, b) => a.number - b.number);
+  console.log(`[API] After enrich:`, enriched.length);
+  
+  return enriched;
 }
 
 export async function getTodayLessonsSorted(groupNumber, subgroup = 0) {
+  console.log(`[API] getTodayLessonsSorted called for ${groupNumber} subgroup ${subgroup}`);
+  
   const schedule = await getGroupSchedule(groupNumber, subgroup);
   const todayKey = getTodayWeekdayKey();
   
-  console.log(`[API] Today is: ${todayKey}`);
-  console.log(`[API] Lessons for today:`, schedule.lessonsByDay?.[todayKey]?.length || 0);
+  console.log(`[API] Today weekday key: ${todayKey}`);
+  console.log(`[API] schedule object:`, schedule ? 'exists' : 'null/undefined');
+  console.log(`[API] schedule.lessonsByDay:`, schedule?.lessonsByDay ? 'exists' : 'null/undefined');
   
   if (!todayKey) {
-    console.log(`[API] No weekday key for today`);
+    console.log(`[API] No weekday key for today (Sunday?)`);
+    return [];
+  }
+
+  if (!schedule?.lessonsByDay?.[todayKey]) {
+    console.log(`[API] No lessonsByDay[${todayKey}] - returning empty`);
     return [];
   }
 
   const lessons = getLessonsForDay(schedule, todayKey);
-
-  console.log(`[API] Lessons after filtering for today:`, lessons.length);
+  console.log(`[API] Final lessons for today:`, lessons.length);
+  
   return lessons;
 }
 
@@ -164,17 +202,21 @@ export async function getTomorrowLessonsSorted(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
   const tomorrowKey = getTomorrowWeekdayKey();
   
-  console.log(`[API] Tomorrow is: ${tomorrowKey}`);
-  console.log(`[API] Lessons for tomorrow:`, schedule.lessonsByDay?.[tomorrowKey]?.length || 0);
+  console.log(`[API] Tomorrow weekday key: ${tomorrowKey}`);
   
   if (!tomorrowKey) {
     console.log(`[API] No weekday key for tomorrow`);
     return [];
   }
 
-  const lessons = getLessonsForDay(schedule, tomorrowKey);
+  if (!schedule?.lessonsByDay?.[tomorrowKey]) {
+    console.log(`[API] No lessonsByDay[${tomorrowKey}] - returning empty`);
+    return [];
+  }
 
-  console.log(`[API] Lessons after filtering for tomorrow:`, lessons.length);
+  const lessons = getLessonsForDay(schedule, tomorrowKey);
+  console.log(`[API] Final lessons for tomorrow:`, lessons.length);
+  
   return lessons;
 }
 
