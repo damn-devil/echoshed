@@ -392,29 +392,29 @@ export async function searchGroup(query) {
 
 function formatLessonShort(lesson) {
   const timeStr = lesson.startLessonTime && lesson.endLessonTime
-    ? `${lesson.startLessonTime} - ${lesson.endLessonTime}`
-    : '??:?? - ??:??';
+    ? `${lesson.startLessonTime} — ${lesson.endLessonTime}`
+    : '??:?? — ??:??';
   const subject = lesson.subject || 'НЕ УКАЗАНО';
   const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
   const auditoryInfo = parseAuditoryInfo(lesson.auditory);
 
-  let text = `ПАРА: ${lesson.number} | ВРЕМЯ: ${timeStr}\n`;
-  text += `ПРЕДМЕТ: ${subject}`;
+  let text = `📚 Пара ${lesson.number} | ⏰ ${timeStr}\n`;
+  text += `📖 ${subject}`;
   if (type) text += ` (${type})`;
-  if (lesson.employee) text += `\nПРЕПОДАВАТЕЛЬ: ${lesson.employee.firstName} ${lesson.employee.lastName}`;
+  if (lesson.employee) text += `\n👤 ${lesson.employee.firstName} ${lesson.employee.lastName}`;
   if (auditoryInfo.room) {
-    text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
+    text += `\n📍 ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (🏢 ${auditoryInfo.building})`;
   }
-  if (lesson.numSubgroup > 0) text += `\nПОДГРУППА: ${lesson.numSubgroup}`;
+  if (lesson.numSubgroup > 0) text += `\n👥 Подгруппа: ${lesson.numSubgroup}`;
 
   return text;
 }
 
 function formatLessonFull(lesson) {
   const timeStr = lesson.startLessonTime && lesson.endLessonTime
-    ? `${lesson.startLessonTime} - ${lesson.endLessonTime}`
-    : '??:?? - ??:??';
+    ? `${lesson.startLessonTime} — ${lesson.endLessonTime}`
+    : '??:?? — ??:??';
   const subject = lesson.subject || 'НЕ УКАЗАНО';
   const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
   const teacher = lesson.employee
@@ -422,17 +422,17 @@ function formatLessonFull(lesson) {
     : 'НЕ УКАЗАНО';
   const auditoryInfo = parseAuditoryInfo(lesson.auditory);
 
-  let text = `ПАРА: ${lesson.number} | ВРЕМЯ: ${timeStr}\n`;
-  text += `ПРЕДМЕТ: ${subject}`;
-  if (type) text += `\nТИП: ${type}`;
-  text += `\nПРЕПОДАВАТЕЛЬ: ${teacher}`;
+  let text = `📚 Пара ${lesson.number} | ⏰ ${timeStr}\n`;
+  text += `📖 ${subject}`;
+  if (type) text += `\n📝 Тип: ${type}`;
+  text += `\n👤 ${teacher}`;
   if (auditoryInfo.room) {
-    text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
+    text += `\n📍 ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (🏢 ${auditoryInfo.building})`;
   } else {
-    text += `\nАУДИТОРИЯ: НЕ УКАЗАНО`;
+    text += `\n📍 Аудитория не указана`;
   }
-  if (lesson.numSubgroup > 0) text += `\nПОДГРУППА: ${lesson.numSubgroup}`;
+  if (lesson.numSubgroup > 0) text += `\n👥 Подгруппа: ${lesson.numSubgroup}`;
 
   return text;
 }
