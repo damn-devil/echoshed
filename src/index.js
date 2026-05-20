@@ -1,99 +1,65 @@
-import TelegramBot from 'node-telegram-bot-api';
-import dotenv from 'dotenv';
-import cron from 'node-cron';
-import { connectDatabase, registerUser, getUser, getUserCount, getAllUsers } from './database.js';
+import 'dotenv/config';
+import { createBot } from './bot.js';
+import { startNotificationScheduler } from './scheduler.js';
+import { connectDatabase, closeDatabase } from './database.js';
+import http from 'http';
 
-dotenv.config();
+const token = process.env.TELEGRAM_BOT_TOKEN;
+const port = process.env.PORT || 3000;
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const bot = new TelegramBot(TOKEN, { polling: true });
+console.log('--- STARTUP ---');
+console.log('PORT:', port);
+console.log('TOKEN_EXISTS:', !!token);
+console.log('REDIS_URL_SET:', !!process.env.UPSTASH_REDIS_REST_URL);
 
-console.log('=== BOT STARTUP ===');
-console.log('Node version:', process.version);
-console.log('TELEGRAM_BOT_TOKEN:', TOKEN ? '✅ SET' : '❌ MISSING');
-console.log('UPSTASH_REDIS_REST_URL:', process.env.UPSTASH_REDIS_REST_URL ? '✅ SET' : '❌ MISSING');
-console.log('==================');
+if (!token) {
+  console.error('Error: TELEGRAM_BOT_TOKEN is missing!');
+  process.exit(1);
+}
 
-// Подключение к БД
-await connectDatabase();
+if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+  console.error('Error: Upstash Redis credentials are missing!');
+  process.exit(1);
+}
 
-// Команда /start
-bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  console.log(`[CMD] /start from ${chatId}`);
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection:', reason);
+});
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('OK');
+});
+
+server.listen(port, '0.0.0.0', async () => {
+  console.log(`HTTP server listening on 0.0.0.0:${port}`);
   
-  // Проверяем, зарегистрирован ли пользователь
-  const existing = await getUser(chatId);
-  
-  if (existing) {
-    await bot.sendMessage(chatId, `👋 С возвращением! Ваша группа: ${existing.group_number}`);
-  } else {
-    await bot.sendMessage(chatId, 'Добро пожаловать! Введите номер вашей группы (например, 123456):');
-    // Сохраняем состояние ожидания ввода группы
-    userStates.set(chatId, 'awaiting_group');
+  try {
+    console.log('Connecting to Redis...');
+    await connectDatabase();
+    console.log('[DB] Database connected');
+    
+    console.log('Initializing bot...');
+    const bot = createBot(token);
+    console.log('Bot initialized.');
+    
+    console.log('Starting scheduler...');
+    startNotificationScheduler(bot);
+    console.log('Scheduler started.');
+    
+    console.log('Bot is running!');
+  } catch (error) {
+    console.error('Failed to start bot:', error);
+    process.exit(1);
   }
 });
 
-// Обработка текстовых сообщений (для ввода группы)
-const userStates = new Map();
-
-bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-  const text = msg.text;
-  
-  if (text && text.startsWith('/')) return; // Игнорируем команды
-  
-  const state = userStates.get(chatId);
-  
-  if (state === 'awaiting_group' && /^\d{6}$/.test(text)) {
-    // Сохраняем группу
-    const success = await registerUser(chatId, text, 0, 'ru');
-    if (success) {
-      await bot.sendMessage(chatId, `✅ Группа ${text} сохранена! Уведомления будут приходить за 5 минут до пар.`);
-      userStates.delete(chatId);
-      
-      // Проверяем количество пользователей
-      const count = await getUserCount();
-      console.log(`📊 Total users after registration: ${count}`);
-    } else {
-      await bot.sendMessage(chatId, '❌ Ошибка сохранения. Попробуйте позже.');
-    }
-  } else if (state === 'awaiting_group') {
-    await bot.sendMessage(chatId, '❌ Пожалуйста, введите номер группы в формате 123456 (6 цифр)');
-  }
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down...');
+  await closeDatabase();
+  process.exit(0);
 });
-
-// Команда /status (для проверки)
-bot.onText(/\/status/, async (msg) => {
-  const chatId = msg.chat.id;
-  const user = await getUser(chatId);
-  const total = await getUserCount();
-  
-  if (user) {
-    await bot.sendMessage(chatId, `📊 Статус:\n- Группа: ${user.group_number}\n- Подгруппа: ${user.subgroup}\n- Всего пользователей в боте: ${total}`);
-  } else {
-    await bot.sendMessage(chatId, '❌ Вы не зарегистрированы. Используйте /start');
-  }
-});
-
-// Планировщик (проверка каждую минуту)
-cron.schedule('* * * * *', async () => {
-  const now = new Date();
-  const minskTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Minsk' }));
-  const minutes = minskTime.getHours() * 60 + minskTime.getMinutes();
-  const date = minskTime.toISOString().split('T')[0];
-  
-  console.log(`[SCHEDULER] Minsk time: ${minskTime.toLocaleTimeString()}, minutes: ${minutes}, date: ${date}`);
-  
-  const total = await getUserCount();
-  console.log(`[SCHEDULER] Total users: ${total}`);
-  
-  // Здесь будет логика отправки уведомлений
-  if (total > 0) {
-    const users = await getAllUsers();
-    console.log(`[SCHEDULER] Processing ${users.length} users`);
-    // Добавьте вашу логику проверки расписания
-  }
-});
-
-console.log('✅ Bot started successfully');
