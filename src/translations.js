@@ -47,28 +47,32 @@ COMMANDS: READY`,
 6: 18:00 - 19:35
 7: 19:50 - 21:25`,
 
-    not_registered: `NOT REGISTERED
-ACTION: SEND GROUP NUMBER`,
+    not_registered: `НЕ ЗАРЕГИСТРИРОВАН
+ДЕЙСТВИЕ: ОТПРАВЬТЕ НОМЕР ГРУППЫ`,
 
-    send_group: `SEND GROUP NUMBER:`,
-    send_new_group: `SEND NEW GROUP NUMBER:`,
+    send_group: `ОТПРАВЬТЕ НОМЕР ГРУППЫ:`,
+    send_new_group: `ОТПРАВЬТЕ НОВЫЙ НОМЕР ГРУППЫ:`,
+
 
     group_found: `[ПОДГРУППА]
 
-GROUP FOUND: {group}
-SELECT SUBGROUP:`,
+ГРУППА НАЙДЕНА: {group}
+ВЫБЕРИТЕ ПОДГРУППУ:`,
+
 
     group_not_found: `[ОШИБКА ГРУППЫ]
 
-ERROR: GROUP {group} NOT FOUND
-ACTION: VERIFY NUMBER AND RETRY
-FORMAT: XXXXXX (6 DIGITS)`,
+ОШИБКА: ГРУППА {group} НЕ НАЙДЕНА
+ДЕЙСТВИЕ: ПРОВЕРЬТЕ НОМЕР И ПОВТОРИТЕ ПОПЫТКУ
+ФОРМАТ: XXXXXX (6 ЦИФР)`,
 
-    groups_found: `GROUPS FOUND:
+    groups_found: `НАЙДЕНЫ ГРУППЫ:
 
-SELECT YOUR GROUP:`,
+ВЫБЕРИТЕ СВОЮ ГРУППУ:`,
 
-    group_not_found_search: `GROUP NOT FOUND. SEND GROUP NUMBER OR TRY ANOTHER NAME.`,
+
+    group_not_found_search: `ГРУППА НЕ НАЙДЕНА. ОТПРАВЬТЕ НОМЕР ГРУППЫ ИЛИ ПОПРОБУЙТЕ ДРУГОЕ НАЗВАНИЕ.`,
+
 
     select_subgroup_1: `👥 Подгруппа 1`,
     select_subgroup_2: `👥 Подгруппа 2`,
@@ -78,7 +82,9 @@ SELECT YOUR GROUP:`,
     error_send_again: `❌ Ошибка: отправь номер группы заново`,
     error_group_not_found: `❌ Группа не найдена`,
 
+
     notification_settings: `⚙️ Настройки уведомлений:`,
+
 
     lesson_start_on: `✅ Начало пары`,
     lesson_start_off: `⬜ Начало пары`,
@@ -89,98 +95,115 @@ SELECT YOUR GROUP:`,
     break_warning_on: `✅ Предупреждение о перемене`,
     break_warning_off: `⬜ Предупреждение о перемене`,
 
-    enabled: `ENABLED`,
-    disabled: `DISABLED`,
 
-    lang_select: `SELECT LANGUAGE / ВЫБЕРИТЕ ЯЗЫК:`,
-    lang_ru: `🇷🇺 [RU] Русский`,
-    lang_en: `🇬🇧 [EN] English`,
-    lang_changed: `LANGUAGE CHANGED TO RUSSIAN`,
-    lang_changed_en: `LANGUAGE CHANGED TO ENGLISH`,
+    enabled: `ВКЛЮЧЕНО`,
+    disabled: `ОТКЛЮЧЕНО`,
 
-    fetch_failed: `FETCH FAILED
-ERROR: {error}`,
 
-    stats: `STATISTICS:
-USERS: {count}`,
+    lang_select: `ВЫБЕРИТЕ ЯЗЫК:`,
+    lang_ru: `🇷🇺 Русский`,
+    lang_changed: `ЯЗЫК ИЗМЕНЕН НА РУССКИЙ`,
 
-    users_list: `REGISTERED USERS ({count}):
+
+    fetch_failed: `ОШИБКА ЗАПРОСА
+ОШИБКА: {error}`,
+
+
+    stats: `СТАТИСТИКА:
+ПОЛЬЗОВАТЕЛИ: {count}`,
+
+
+    users_list: `ЗАРЕГИСТРИРОВАННЫЕ ПОЛЬЗОВАТЕЛИ ({count}):
 {list}`,
 
-    menu_today: `[TODAY]`,
-    menu_tomorrow: `[TOMORROW]`,
-    menu_week: `[WEEK]`,
-    menu_next: `[NEXT]`,
-    menu_now: `[NOW]`,
-    menu_settings: `[SETTINGS]`,
-    menu_group: `[GROUP]`,
-    menu_lang: `[LANG]`,
-    menu_help: `[HELP]`,
 
-    today_schedule: `[TODAY SCHEDULE]`,
-    today_schedule_sub: `[TODAY SCHEDULE] (SUBGROUP {subgroup})`,
-    no_lessons_today: `[TODAY SCHEDULE]
+    menu_today: `[SEGODNIA]`,
+    menu_tomorrow: `[ZAVTRA]`,
+    menu_week: `[NEDSELIA]`,
+    menu_next: `[SLEDUЩAЯ]`,
+    menu_now: `[TEKUЩAЯ]`,
+    menu_settings: `[NASTROЙKI]`,
+    menu_group: `[SMENITЬ GRUPPU]`,
+    menu_lang: `[YAЗЫK]`,
+    menu_help: `[POMOSHЩ]`,
 
-NO LESSONS - REST DAY`,
 
-    tomorrow_schedule: `[TOMORROW SCHEDULE]`,
-    tomorrow_schedule_sub: `[TOMORROW SCHEDULE] (SUBGROUP {subgroup})`,
-    no_lessons_tomorrow: `[TOMORROW SCHEDULE]
+    today_schedule: `[RASPISАНИЕ SEGODNIA]`,
+    today_schedule_sub: `[RASPISАНИЕ SEGODNIA] (PODGRUPPA {subgroup})`,
+    no_lessons_today: `[RASPISАНИЕ SEGODNIA]
 
-NO LESSONS - REST DAY`,
+NET PAR - VKHODNOЙ DEN`,
 
-    week_schedule: `[WEEK SCHEDULE]`,
-    week_schedule_sub: `[WEEK SCHEDULE] (SUBGROUP {subgroup})`,
-    no_lessons_week: `[WEEK SCHEDULE]
 
-NO LESSONS THIS WEEK`,
+    tomorrow_schedule: `[RASPISАНИЕ ZAVTRA]`,
+    tomorrow_schedule_sub: `[RASPISАНИЕ ZAVTRA] (PODGRUPPA {subgroup})`,
+    no_lessons_tomorrow: `[RASPISАНИЕ ZAVTRA]
 
-    next_lesson: `[NEXT LESSON]`,
-    no_more_today: `[NO MORE LESSONS TODAY]`,
-    first_tomorrow: `FIRST LESSON TOMORROW:`,
-    no_lessons_today_tomorrow: `[NO LESSONS TODAY OR TOMORROW]`,
+NET PAR - VKHODNOЙ DEN`,
 
-    current_lesson: `[CURRENT LESSON]`,
-    no_active_lesson: `[NO ACTIVE LESSON]`,
 
-    lesson: `LESSON`,
-    subject: `SUBJECT`,
-    type: `TYPE`,
-    teacher: `TEACHER`,
-    room: `ROOM`,
-    bldg: `BLDG`,
-    subgroup: `SUBGROUP`,
-    time: `TIME`,
-    start: `START`,
-    in: `IN`,
-    remaining: `REMAINING`,
-    not_set: `NOT SET`,
+    week_schedule: `[RASPISАНИЕ НА NEDSELIA]`,
+    week_schedule_sub: `[RASPISАНИЕ НА NEDSELIA] (PODGRUPPA {subgroup})`,
+    no_lessons_week: `[RASPISАНИЕ НА NEDSELIA]
 
-    break_warning: `[BREAK WARNING]
+NET PAR ÉТОЙ NEDSELII`,
 
-CURRENT LESSON ENDING IN {min} MIN
-BREAK DURATION: {duration} MIN
-BREAK TIME: {start} - {end}`,
 
-    break_started: `[BREAK STARTED]
+    next_lesson: `[SLEDUЩAЯ PARA]`,
+    no_more_today: `[BOLЩE NET PAR SEGODNIA]`,
+    first_tomorrow: `PЕРВАЯ PARA ZAVTRA:`,
+    no_lessons_today_tomorrow: `[NET PAR NI SEGODNIA NI ZAVTRA]`,
 
-BREAK DURATION: {duration} MIN
-BREAK TIME: {start} - {end}`,
 
-    next_lesson_label: `NEXT LESSON`,
+    current_lesson: `[TEKUЩAЯ PARA]`,
+    no_active_lesson: `[NET AKTIVNOЙ PARI]`,
 
-    lesson_warning: `[LESSON WARNING]
 
-LESSON {num} STARTS IN {min} MIN`,
+    lesson: `PARA`,
+    subject: `PREDMET`,
+    type: `TIP`,
+    teacher: `PREPODAVATELЬ`,
+    room: `AUDITORИЯ`,
+    bldg: `KORPUS`,
+    subgroup: `PODGRUPPA`,
+    time: `VREMYA`,
+    start: `NACHALO`,
+    in: `ЧЕРЕЗ`,
+    remaining: `OSTALOSЬ`,
+    not_set: `NET USTАНОВLENO`,
 
-    lesson_started: `[LESSON STARTED]
 
-LESSON: {num}`,
+    break_warning: `[PREDUпрежDENIE O ПЕРЕМЕНЕ]
 
-    day_complete: `[DAY COMPLETE]
+TEKUЩAЯ PARA OKONЧAЕТСЯ ЧЕРЕЗ {min} MIN
+TRITELЬNOSTЬ PEREMENY: {duration} MIN
+PEREMENЯ: {start} - {end}`,
 
-LAST LESSON ENDED: {subject}
-STATUS: FREE`,
+
+    break_started: `[PEREMENЯ НАCHAЛAСЬ]
+
+TRITELЬNOSTЬ PEREMENY: {duration} MIN
+PEREMENЯ: {start} - {end}`,
+
+
+    next_lesson_label: `SLEDUЩAЯ PARA`,
+
+
+    lesson_warning: `[PREDUпрежDENIE O PARЕ]
+
+PARA {num} NACHAETСЯ ЧЕРЕЗ {min} MIN`,
+
+
+    lesson_started: `[PARA NACHAЛАСЬ]
+
+PARA: {num}`,
+
+
+    day_complete: `[DEN ZAKONЧEN]
+
+POSLEDNЯЯ PARA OKONЧAЛASʹ: {subject}
+STATUS: SVOBODEN`,
+
 
     monday: `Понедельник`,
     tuesday: `Вторник`,
@@ -188,6 +211,7 @@ STATUS: FREE`,
     thursday: `Четверг`,
     friday: `Пятница`,
     saturday: `Суббота`,
+
 
     lecture: `Лекция`,
     lab: `Лабораторная`,
@@ -197,206 +221,6 @@ STATUS: FREE`,
     pass: `Зачёт`,
     exam: `Экзамен`,
     home_test: `Домашняя контрольная работа`,
-  },
-
-  en: {
-    welcome: `$ BSUIR_BOT_SYSTEM v1.0
-> INITIALIZING...
-> TOKEN_CHECK: OK
-> DATABASE_CONNECTION: ACTIVE
-> API_ENDPOINT: bsuir-api.by
-> POLLING: ENABLED
-> BOT_STATUS: ONLINE
-> WAITING_FOR_INPUT...
-FEATURES:
-├─ AUTO LESSON START NOTIFICATIONS
-├─ AUTO BREAK NOTIFICATIONS
-├─ 3 MINUTE WARNINGS
-├─ ROOM AND BUILDING INFO
-└─ AUTOMATIC SUBGROUP FILTERING
-REQUEST: ENTER GROUP NUMBER TO REGISTER`,
-
-    registered: `[AFTER REGISTRATION]
-
-STATUS: REGISTERED
-GROUP: {group}
-SUBGROUP: {subgroup}
-NOTIFICATIONS: ACTIVE
-COMMANDS: READY`,
-
-    help: `COMMANDS:
-/start - REGISTRATION
-/today - TODAY SCHEDULE
-/tomorrow - TOMORROW SCHEDULE
-/week - WEEK SCHEDULE
-/next - NEXT LESSON
-/now - CURRENT LESSON
-/settings - NOTIFICATION SETTINGS
-/group - CHANGE GROUP
-/lang - LANGUAGE / ЯЗЫК
-/schedule - LESSON TIMES
-/users - STATISTICS (ADMIN)
-/help - THIS MESSAGE`,
-
-    schedule_times: `LESSON TIMES:
-1: 08:30 - 10:05
-2: 10:20 - 11:55
-3: 12:30 - 14:05
-4: 14:20 - 15:55
-5: 16:10 - 17:45
-6: 18:00 - 19:35
-7: 19:50 - 21:25`,
-
-    not_registered: `NOT REGISTERED
-ACTION: SEND GROUP NUMBER`,
-
-    send_group: `SEND GROUP NUMBER:`,
-    send_new_group: `SEND NEW GROUP NUMBER:`,
-
-    group_found: `[SUBGROUP]
-
-GROUP FOUND: {group}
-SELECT SUBGROUP:`,
-
-    group_not_found: `[GROUP ERROR]
-
-ERROR: GROUP {group} NOT FOUND
-ACTION: VERIFY NUMBER AND RETRY
-FORMAT: XXXXXX (6 DIGITS)`,
-
-    groups_found: `GROUPS FOUND:
-
-SELECT YOUR GROUP:`,
-
-    group_not_found_search: `GROUP NOT FOUND. SEND GROUP NUMBER OR TRY ANOTHER NAME.`,
-
-    select_subgroup_1: `👥 Subgroup 1`,
-    select_subgroup_2: `👥 Subgroup 2`,
-    select_subgroup_0: `📋 General (All streams)`,
-
-    done: `✅ Done`,
-    error_send_again: `❌ Error: send group number again`,
-    error_group_not_found: `❌ Group not found`,
-
-    notification_settings: `⚙️ Notification settings:`,
-
-    lesson_start_on: `✅ Lesson start`,
-    lesson_start_off: `⬜ Lesson start`,
-    lesson_warning_on: `✅ Warning 3 min before`,
-    lesson_warning_off: `⬜ Warning 3 min before`,
-    break_start_on: `✅ Break start`,
-    break_start_off: `⬜ Break start`,
-    break_warning_on: `✅ Break warning`,
-    break_warning_off: `⬜ Break warning`,
-
-    enabled: `ENABLED`,
-    disabled: `DISABLED`,
-
-    lang_select: `SELECT LANGUAGE / ВЫБЕРИТЕ ЯЗЫК:`,
-    lang_ru: `🇷🇺 [RU] Русский`,
-    lang_en: `🇬🇧 [EN] English`,
-    lang_changed: `LANGUAGE CHANGED TO RUSSIAN`,
-    lang_changed_en: `LANGUAGE CHANGED TO ENGLISH`,
-
-    fetch_failed: `FETCH FAILED
-ERROR: {error}`,
-
-    stats: `STATISTICS:
-USERS: {count}`,
-
-    users_list: `REGISTERED USERS ({count}):
-{list}`,
-
-    menu_today: `[TODAY]`,
-    menu_tomorrow: `[TOMORROW]`,
-    menu_week: `[WEEK]`,
-    menu_next: `[NEXT]`,
-    menu_now: `[NOW]`,
-    menu_settings: `[SETTINGS]`,
-    menu_group: `[GROUP]`,
-    menu_lang: `[LANG]`,
-    menu_help: `[HELP]`,
-
-    today_schedule: `[TODAY SCHEDULE]`,
-    today_schedule_sub: `[TODAY SCHEDULE] (SUBGROUP {subgroup})`,
-    no_lessons_today: `[TODAY SCHEDULE]
-
-NO LESSONS - REST DAY`,
-
-    tomorrow_schedule: `[TOMORROW SCHEDULE]`,
-    tomorrow_schedule_sub: `[TOMORROW SCHEDULE] (SUBGROUP {subgroup})`,
-    no_lessons_tomorrow: `[TOMORROW SCHEDULE]
-
-NO LESSONS - REST DAY`,
-
-    week_schedule: `[WEEK SCHEDULE]`,
-    week_schedule_sub: `[WEEK SCHEDULE] (SUBGROUP {subgroup})`,
-    no_lessons_week: `[WEEK SCHEDULE]
-
-NO LESSONS THIS WEEK`,
-
-    next_lesson: `[NEXT LESSON]`,
-    no_more_today: `[NO MORE LESSONS TODAY]`,
-    first_tomorrow: `FIRST LESSON TOMORROW:`,
-    no_lessons_today_tomorrow: `[NO LESSONS TODAY OR TOMORROW]`,
-
-    current_lesson: `[CURRENT LESSON]`,
-    no_active_lesson: `[NO ACTIVE LESSON]`,
-
-    lesson: `LESSON`,
-    subject: `SUBJECT`,
-    type: `TYPE`,
-    teacher: `TEACHER`,
-    room: `ROOM`,
-    bldg: `BLDG`,
-    subgroup: `SUBGROUP`,
-    time: `TIME`,
-    start: `START`,
-    in: `IN`,
-    remaining: `REMAINING`,
-    not_set: `NOT SET`,
-
-    break_warning: `[BREAK WARNING]
-
-CURRENT LESSON ENDING IN {min} MIN
-BREAK DURATION: {duration} MIN
-BREAK TIME: {start} - {end}`,
-
-    break_started: `[BREAK STARTED]
-
-BREAK DURATION: {duration} MIN
-BREAK TIME: {start} - {end}`,
-
-    next_lesson_label: `NEXT LESSON`,
-
-    lesson_warning: `[LESSON WARNING]
-
-LESSON {num} STARTS IN {min} MIN`,
-
-    lesson_started: `[LESSON STARTED]
-
-LESSON: {num}`,
-
-    day_complete: `[DAY COMPLETE]
-
-LAST LESSON ENDED: {subject}
-STATUS: FREE`,
-
-    monday: `Monday`,
-    tuesday: `Tuesday`,
-    wednesday: `Wednesday`,
-    thursday: `Thursday`,
-    friday: `Friday`,
-    saturday: `Saturday`,
-
-    lecture: `Lecture`,
-    lab: `Laboratory`,
-    practice: `Practice`,
-    course_project: `Course Project`,
-    test: `Test`,
-    pass: `Pass`,
-    exam: `Exam`,
-    home_test: `Home Test`,
   },
 };
 
