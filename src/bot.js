@@ -33,7 +33,6 @@ const TEXT_COMMANDS = {
   'пары': 'schedule',
 };
 
-// Состояние: пользователи которые ввели группу и ждут ввода подгруппы
 const pendingGroup = new Map();
 
 export function createBot(token) {
@@ -116,8 +115,8 @@ export function createBot(token) {
   bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
 
-    if (isUserRegistered(chatId)) {
-      const user = getUser(chatId);
+    if (await isUserRegistered(chatId)) {
+      const user = await getUser(chatId);
       const subgroupText = user.subgroup > 0 ? user.subgroup : 'все';
       await bot.sendMessage(chatId, `✅ ВЫ УЖЕ ЗАРЕГИСТРИРОВАНЫ
 
@@ -142,7 +141,7 @@ export function createBot(token) {
       await bot.sendMessage(msg.chat.id, '🔒 ACCESS DENIED');
       return;
     }
-    const users = getUsersList();
+    const users = await getUsersList();
     const count = users.length;
     let list = users.map((u, i) => {
       const sg = u.subgroup > 0 ? u.subgroup : 'все';
@@ -156,7 +155,7 @@ export function createBot(token) {
       await bot.sendMessage(msg.chat.id, '🔒 ACCESS DENIED');
       return;
     }
-    const count = getUserCount();
+    const count = await getUserCount();
     await bot.sendMessage(msg.chat.id, `📊 Статистика:\n👤 Пользователей: ${count}`);
   });
 
@@ -177,7 +176,7 @@ export function createBot(token) {
 
       if (subInput === '0' || subInput === '1' || subInput === '2') {
         const subgroup = parseInt(subInput);
-        registerUser(chatId, groupNumber, subgroup);
+        await registerUser(chatId, groupNumber, subgroup);
         pendingGroup.delete(chatId);
 
         const sgText = subgroup === 0 ? 'все' : subgroup;
@@ -197,8 +196,8 @@ export function createBot(token) {
     // Текстовая команда
     const cmdFromText = resolveCommand(text);
     if (cmdFromText) {
-      if (isUserRegistered(chatId)) {
-        const user = getUser(chatId);
+      if (await isUserRegistered(chatId)) {
+        const user = await getUser(chatId);
         await handleCommand(chatId, cmdFromText, user);
       } else {
         await bot.sendMessage(chatId, '⚠️ Вы не зарегистрированы\nВведите номер группы:');
@@ -215,8 +214,8 @@ export function createBot(token) {
           await bot.sendMessage(chatId, '📝 Введите номер группы:');
           return;
         }
-        if (isUserRegistered(chatId)) {
-          const user = getUser(chatId);
+        if (await isUserRegistered(chatId)) {
+          const user = await getUser(chatId);
           await handleCommand(chatId, cmd, user);
         } else {
           await bot.sendMessage(chatId, '⚠️ Вы не зарегистрированы\nВведите номер группы:');
@@ -248,7 +247,7 @@ export function createBot(token) {
     }
 
     // Поиск группы по названию (только для незарегистрированных)
-    if (!isUserRegistered(chatId)) {
+    if (!await isUserRegistered(chatId)) {
       const results = await searchGroup(text);
       if (results.length > 0) {
         const list = results.map((r, i) => `${i + 1}. ${r.name}${r.faculty ? ` (${r.faculty})` : ''}`).join('\n');
