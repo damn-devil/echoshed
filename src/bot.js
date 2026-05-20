@@ -21,17 +21,6 @@ import {
 } from './database.js';
 import { t, getMainMenuKeyboard } from './translations.js';
 
-const MENU_MAP = {
-  '[TODAY]': 'today',
-  '[TOMORROW]': 'tomorrow',
-  '[WEEK]': 'week',
-  '[NEXT]': 'next',
-  '[NOW]': 'now',
-  '[SETTINGS]': 'settings',
-  '[GROUP]': 'group',
-  '[LANG]': 'lang',
-  '[HELP]': 'help',
-};
 
 export function createBot(token) {
   const bot = new TelegramBot(token, { polling: true });
@@ -101,14 +90,14 @@ export function createBot(token) {
           await bot.sendMessage(chatId, t('send_new_group', lang));
           return;
         case 'lang':
-          await bot.sendMessage(chatId, t('lang_select', lang), {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: t('lang_ru', lang), callback_data: 'lang_ru' }, { text: t('lang_en', lang), callback_data: 'lang_en' }],
-              ],
-            },
-          });
-          return;
+           await bot.sendMessage(chatId, t('lang_select', lang), {
+             reply_markup: {
+               inline_keyboard: [
+                 [{ text: t('lang_ru', lang), callback_data: 'lang_ru' }],
+               ],
+             },
+           });
+           return;
         case 'help':
           await bot.sendMessage(chatId, t('help', lang), { reply_markup: getMenu(chatId) });
           return;
@@ -172,14 +161,13 @@ export function createBot(token) {
       const newLang = data.replace('lang_', '');
       updateLanguage(chatId, newLang);
       const msg = newLang === 'ru' ? t('lang_changed', 'ru') : t('lang_changed_en', 'en');
-      await safeEditMessage('editMessageText', chatId, msgId, msg, {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: newLang === 'ru' ? '[x] Русский' : '[ ] Русский', callback_data: 'noop_ru' },
-             { text: newLang === 'en' ? '[x] English' : '[ ] English', callback_data: 'noop_en' }],
-          ],
-        },
-      });
+       await safeEditMessage('editMessageText', chatId, msgId, msg, {
+         reply_markup: {
+           inline_keyboard: [
+             [{ text: newLang === 'ru' ? '[x] Русский' : '[ ] Русский', callback_data: 'noop_ru' }],
+           ],
+         },
+       });
       await safeAnswerCallback(callbackQuery.id, { text: msg });
       return;
     }
@@ -231,16 +219,7 @@ export function createBot(token) {
     }
 
     // Обработка кнопок меню из инлайна (если вдруг)
-    if (MENU_MAP[data]) {
-      const user = getUser(chatId);
-      if (isUserRegistered(chatId)) {
-        await handleCommand(chatId, MENU_MAP[data], lang, user);
-      } else {
-        await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
-      }
-      await safeAnswerCallback(callbackQuery.id);
-      return;
-    }
+    
 
     await safeAnswerCallback(callbackQuery.id);
   });
@@ -253,15 +232,7 @@ export function createBot(token) {
     if (!text) return;
 
     // Обработка команд из меню
-    if (MENU_MAP[text]) {
-      if (isUserRegistered(chatId)) {
-        const user = getUser(chatId);
-        await handleCommand(chatId, MENU_MAP[text], lang, user);
-      } else {
-        await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
-      }
-      return;
-    }
+    
 
     if (text.startsWith('/')) {
       const cmd = text.split('@')[0].substring(1);
