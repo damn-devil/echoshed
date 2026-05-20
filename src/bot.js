@@ -12,11 +12,26 @@ import {
   registerUser,
   getUser,
   isUserRegistered,
-  updateNotificationSetting,
-  getNotificationSettings,
   getUserCount,
   getUsersList,
 } from './database.js';
+import { LESSON_TIMES, BREAK_TIMES } from './config.js';
+
+const TEXT_COMMANDS = {
+  'сегодня': 'today',
+  'завтра': 'tomorrow',
+  'неделя': 'week',
+  'неделю': 'week',
+  'следующая': 'next',
+  'след': 'next',
+  'сейчас': 'now',
+  'текущая': 'now',
+  'помощь': 'help',
+  'help': 'help',
+  'расписание': 'schedule',
+  'время': 'schedule',
+  'пары': 'schedule',
+};
 
 export function createBot(token) {
   const bot = new TelegramBot(token, { polling: true });
@@ -64,43 +79,46 @@ export function createBot(token) {
         case 'now':
           result = (await getCurrentLessonInfo(group, sub)).message;
           break;
-        case 'settings':
-          const settings = getNotificationSettings(chatId);
-          await bot.sendMessage(chatId, '⚙️ Настройки уведомлений:', {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: settings.lessonStart ? '✅ Начало пары' : '⬜ Начало пары', callback_data: 'toggle_lesson_start' }],
-                [{ text: settings.lessonWarning ? '✅ Предупреждение за 3 мин' : '⬜ Предупреждение за 3 мин', callback_data: 'toggle_lesson_warning' }],
-                [{ text: settings.breakStart ? '✅ Начало перемены' : '⬜ Начало перемены', callback_data: 'toggle_break_start' }],
-                [{ text: settings.breakWarning ? '✅ Предупреждение о перемене' : '⬜ Предупреждение о перемене', callback_data: 'toggle_break_warning' }],
-              ],
-            },
-          });
-          return;
-        case 'group':
-          await bot.sendMessage(chatId, 'ОТПРАВЬ НОВЫЙ НОМЕР ГРУППЫ:');
-          return;
+        case 'schedule': {
+          let text = '⏰ ВРЕМЯ ПАР:\n';
+          text += '─'.repeat(30) + '\n';
+          for (const l of LESSON_TIMES) {
+            text += `${l.pair}. ${l.start} — ${l.end}\n`;
+          }
+          text += '\n⏱ ПЕРЕМЕНЫ:\n';
+          text += '─'.repeat(30) + '\n';
+          for (const b of BREAK_TIMES) {
+            text += `После ${b.after}-й: ${b.start} — ${b.end} (${b.duration} мин)\n`;
+          }
+          result = text.trim();
+          break;
+        }
         case 'help':
-          await bot.sendMessage(chatId, `КОМАНДЫ:
-/start - РЕГИСТРАЦИЯ
-/today - РАСПИСАНИЕ НА СЕГОДНЯ
-/tomorrow - РАСПИСАНИЕ НА ЗАВТРА
-/week - РАСПИСАНИЕ НА НЕДЕЛЮ
-/next - СЛЕДУЮЩАЯ ПАРА
-/now - ТЕКУЩАЯ ПАРА
-/settings - НАСТРОЙКИ УВЕДОМЛЕНИЙ
-/group - СМЕНИТЬ ГРУППУ
-/schedule - ВРЕМЯ ПАР
-/users - СТАТИСТИКА (АДМИН)
-/help - ЭТА СПРАВКА`);
+          await bot.sendMessage(chatId, `📋 КОМАНДЫ:
+
+/start — Регистрация
+/today или "сегодня" — Расписание на сегодня
+/tomorrow или "завтра" — Расписание на завтра
+/week или "неделя" — Расписание на неделю
+/next или "следующая" — Следующая пара
+/now или "сейчас" — Текущая пара
+/schedule или "время" — Время пар
+/group или "сменить" — Сменить группу
+/users — Статистика (админ)
+/help или "помощь" — Эта справка`);
           return;
         default:
           return;
       }
       await bot.sendMessage(chatId, result);
     } catch (error) {
-      await bot.sendMessage(chatId, `ОШИБКА ПОЛУЧЕНИЯ ДАННЫХ\nERROR: ${error.message}`);
+      await bot.sendMessage(chatId, `❌ ОШИБКА ПОЛУЧЕНИЯ ДАННЫХ\nERROR: ${error.message}`);
     }
+  }
+
+  function resolveCommand(text) {
+    const lower = text.toLowerCase().trim().replace(/[\/]/g, '');
+    return TEXT_COMMANDS[lower] || null;
   }
 
   bot.onText(/\/start/, async (msg) => {
@@ -114,8 +132,8 @@ export function createBot(token) {
 STATUS: REGISTERED
 GROUP: ${user.group_number}
 SUBGROUP: ${subgroupText}
-NOTIFICATIONS: ACTIVE
-COMMANDS: READY`);
+УВЕДОМЛЕНИЯ: ВКЛ
+КОМАНДЫ: ГОТОВЫ`);
     } else {
       await bot.sendMessage(chatId, `$ BSUIR_BOT_SYSTEM v1.0
 > INITIALIZING...
@@ -128,7 +146,7 @@ COMMANDS: READY`);
 ФУНКЦИОНАЛ:
 ├─ АВТО-УВЕДОМЛЕНИЯ О НАЧАЛЕ ПАР
 ├─ АВТО-УВЕДОМЛЕНИЯ О ПЕРЕМЕНАХ
-├─ ПРЕДУПРЕЖДЕНИЕ ЗА 3 МИНУТЫ
+├─ ПРЕДУПРЕЖДЕНИЕ ЗА 5 МИНУТ
 ├─ УКАЗАНИЕ АУДИТОРИИ И КОРПУСА
 └─ АВТОМАТИЧЕСКАЯ ФИЛЬТРАЦИЯ ПОДГРУПП 
 ЗАПРОС: ВВЕДИТЕ НОМЕР ГРУППЫ ДЛЯ РЕГИСТРАЦИИ`);
@@ -144,7 +162,7 @@ COMMANDS: READY`);
     const count = users.length;
     let list = users.map((u, i) => {
       const sg = u.subgroup > 0 ? u.subgroup : '0';
-      return `${i + 1}. [${u.group_number}] SG:${sg} LANG:${u.language} ID:${u.chat_id}`;
+      return `${i + 1}. [${u.group_number}] SG:${sg} ID:${u.chat_id}`;
     }).join('\n');
     await bot.sendMessage(msg.chat.id, `ЗАРЕГИСТРИРОВАННЫЕ ПОЛЬЗОВАТЕЛИ (${count}):\n${list}`);
   });
@@ -185,28 +203,9 @@ COMMANDS: READY`);
 STATUS: REGISTERED
 GROUP: ${groupName}
 SUBGROUP: ${subgroupText}
-NOTIFICATIONS: ACTIVE
-COMMANDS: READY`);
+УВЕДОМЛЕНИЯ: ВКЛ
+КОМАНДЫ: ГОТОВЫ`);
       await safeAnswerCallback(callbackQuery.id, { text: '✅ Готово' });
-      return;
-    }
-
-    if (data.startsWith('toggle_')) {
-      const settingKey = data.replace('toggle_', '');
-      const settings = getNotificationSettings(chatId);
-      updateNotificationSetting(chatId, settingKey, !settings[settingKey]);
-      const newSettings = getNotificationSettings(chatId);
-      const state = newSettings[settingKey] ? 'ВКЛЮЧЕНО' : 'ВЫКЛЮЧЕНО';
-
-      await safeEditMessage('editMessageReplyMarkup', chatId, msgId, {
-        inline_keyboard: [
-          [{ text: newSettings.lessonStart ? '✅ Начало пары' : '⬜ Начало пары', callback_data: 'toggle_lesson_start' }],
-          [{ text: newSettings.lessonWarning ? '✅ Предупреждение за 3 мин' : '⬜ Предупреждение за 3 мин', callback_data: 'toggle_lesson_warning' }],
-          [{ text: newSettings.breakStart ? '✅ Начало перемены' : '⬜ Начало перемены', callback_data: 'toggle_break_start' }],
-          [{ text: newSettings.breakWarning ? '✅ Предупреждение о перемене' : '⬜ Предупреждение о перемене', callback_data: 'toggle_break_warning' }],
-        ],
-      });
-      await safeAnswerCallback(callbackQuery.id, { text: state });
       return;
     }
 
@@ -219,9 +218,22 @@ COMMANDS: READY`);
 
     if (!text) return;
 
+    // Текстовая команда
+    const cmdFromText = resolveCommand(text);
+    if (cmdFromText) {
+      if (isUserRegistered(chatId)) {
+        const user = getUser(chatId);
+        await handleCommand(chatId, cmdFromText, user);
+      } else {
+        await bot.sendMessage(chatId, 'ВЫ НЕ ЗАРЕГИСТРИРОВАНЫ\nОТПРАВЬТЕ НОМЕР ГРУППЫ ДЛЯ РЕГИСТРАЦИИ');
+      }
+      return;
+    }
+
+    // Команды со слэшем
     if (text.startsWith('/')) {
       const cmd = text.split('@')[0].substring(1);
-      if (['today', 'tomorrow', 'week', 'next', 'now', 'settings', 'group', 'help', 'schedule'].includes(cmd)) {
+      if (['today', 'tomorrow', 'week', 'next', 'now', 'group', 'help', 'schedule'].includes(cmd)) {
         if (isUserRegistered(chatId)) {
           const user = getUser(chatId);
           await handleCommand(chatId, cmd, user);
@@ -233,6 +245,7 @@ COMMANDS: READY`);
       return;
     }
 
+    // Номер группы
     const groupPattern = /^\d{4,6}$/;
     if (groupPattern.test(text.trim())) {
       const groupNumber = text.trim();
@@ -254,6 +267,7 @@ COMMANDS: READY`);
       return;
     }
 
+    // Поиск группы по названию (только для незарегистрированных)
     if (!isUserRegistered(chatId)) {
       const results = await searchGroup(text);
       if (results.length > 0) {
@@ -266,6 +280,9 @@ COMMANDS: READY`);
       }
       return;
     }
+
+    // Зарегистрированный пользователь отправил непонятный текст
+    await bot.sendMessage(chatId, 'Неизвестная команда. Напишите "помощь" для списка команд.');
   });
 
   return bot;
