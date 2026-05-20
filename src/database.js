@@ -72,20 +72,6 @@ export function updateGroup(chatId, groupNumber, subgroup = 0) {
   }
 }
 
-export function updateLanguage(chatId, language) {
-  const user = getUser(chatId);
-  if (user) {
-    user.language = language;
-    user.updated_at = new Date().toISOString();
-    persist();
-  }
-}
-
-export function getUserLanguage(chatId) {
-  const user = getUser(chatId);
-  return user?.language || 'ru';
-}
-
 export function updateNotificationSetting(chatId, setting, value) {
   const user = getUser(chatId);
   if (user) {
