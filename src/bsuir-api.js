@@ -1,5 +1,5 @@
 import { createBsuirClient, normalizeSchedule } from 'bsuir-iis-api';
-import { LESSON_TIMES, LESSON_TYPES } from './config.js';
+import { LESSON_TIMES } from './config.js';
 
 const client = createBsuirClient({
   cache: { ttlMs: 5 * 60 * 1000, maxEntries: 200 },
@@ -17,6 +17,17 @@ const WEEKDAY_MAP = {
   4: 'Четверг',
   5: 'Пятница',
   6: 'Суббота',
+};
+
+const LESSON_TYPE_MAP = {
+  'Лек': 'Лекция',
+  'Лаб': 'Лабораторная',
+  'Пр': 'Практическая',
+  'КП': 'Курсовой проект',
+  'КР': 'Контрольная работа',
+  'Зач': 'Зачёт',
+  'Экз': 'Экзамен',
+  'ДКР': 'Домашняя контрольная работа',
 };
 
 function getLessonNumber(timeStr) {
@@ -66,12 +77,12 @@ function enrichLesson(rawLesson) {
   };
 }
 
-function getTodayWeekday() {
+function getTodayWeekdayKey() {
   const day = new Date().getDay();
   return WEEKDAY_MAP[day] || null;
 }
 
-function getTomorrowWeekday() {
+function getTomorrowWeekdayKey() {
   const day = new Date().getDay();
   const tomorrowDay = day === 0 ? 1 : day === 6 ? 7 : day + 1;
   return WEEKDAY_MAP[tomorrowDay] || null;
@@ -79,7 +90,7 @@ function getTomorrowWeekday() {
 
 function getLessonTypeFull(abbrev) {
   if (!abbrev) return '';
-  return LESSON_TYPES[abbrev] || abbrev;
+  return LESSON_TYPE_MAP[abbrev] || abbrev;
 }
 
 function parseAuditoryInfo(auditoryStr) {
@@ -111,38 +122,62 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
     } else {
       raw = await client.schedule.getGroup(groupNumber, { raw: true });
     }
+    
+    // API возвращает данные в поле schedules
     const schedule = normalizeSchedule(raw);
+    
+    console.log(`[API] Fetched schedule for ${cacheKey}. Days available:`, Object.keys(schedule.lessonsByDay || schedule.schedules || {}));
+    
     scheduleCache.set(cacheKey, { data: schedule, timestamp: now });
     return schedule;
   } catch (error) {
-    console.error(`Error fetching schedule for group ${groupNumber} subgroup ${subgroup}:`, error.message);
-    throw new Error('Не удалось получить расписание. Проверьте номер группы и подгруппу.');
+    console.error(`[API] Error fetching schedule for ${cacheKey}:`, error.message);
+    throw new Error('Не удалось получить расписание. Проверьте номер группы.');
   }
+}
+
+function getLessonsForDay(schedule, dayKey) {
+  // Пробуем lessonsByDay (нормализованный формат) или schedules (сырой формат API)
+  const lessons = schedule.lessonsByDay?.[dayKey] || schedule.schedules?.[dayKey] || [];
+  return lessons
+    .filter(l => l.source === 'schedules' || !l.source)
+    .map(enrichLesson)
+    .sort((a, b) => a.number - b.number);
 }
 
 export async function getTodayLessonsSorted(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
-  const todayName = getTodayWeekday();
-  if (!todayName || !schedule.lessonsByDay[todayName]) return [];
+  const todayKey = getTodayWeekdayKey();
+  
+  console.log(`[API] Today is: ${todayKey}`);
+  console.log(`[API] LessonsByDay for today:`, schedule.lessonsByDay?.[todayKey] || schedule.schedules?.[todayKey]);
+  
+  if (!todayKey) {
+    console.log(`[API] No lessons found for ${todayKey}`);
+    return [];
+  }
 
-  const lessons = schedule.lessonsByDay[todayName]
-    .filter(l => l.source === 'schedules')
-    .map(enrichLesson)
-    .sort((a, b) => a.number - b.number);
+  const lessons = getLessonsForDay(schedule, todayKey);
 
+  console.log(`[API] Lessons after filtering for today:`, lessons.length);
   return lessons;
 }
 
 export async function getTomorrowLessonsSorted(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
-  const tomorrowName = getTomorrowWeekday();
-  if (!tomorrowName || !schedule.lessonsByDay[tomorrowName]) return [];
+  const tomorrowKey = getTomorrowWeekdayKey();
+  
+  console.log(`[API] Tomorrow is: ${tomorrowKey}`);
+  console.log(`[API] LessonsByDay for tomorrow:`, schedule.lessonsByDay?.[tomorrowKey] || schedule.schedules?.[tomorrowKey]);
+  
+  if (!tomorrowKey) {
+    console.log(`[API] No lessons found for ${tomorrowKey}`);
+    return [];
+  }
 
-  const lessons = schedule.lessonsByDay[tomorrowName]
-    .filter(l => l.source === 'schedules')
-    .map(enrichLesson)
-    .sort((a, b) => a.number - b.number);
+  const lessons = getLessonsForDay(schedule, tomorrowKey);
 
+  console.log(`[API] Lessons after filtering for tomorrow:`, lessons.length);
   return lessons;
 }
 
@@ -150,11 +185,10 @@ export async function getTodayScheduleText(groupNumber, subgroup = 0) {
   const lessons = await getTodayLessonsSorted(groupNumber, subgroup);
 
   if (lessons.length === 0) {
-    return '[TODAY SCHEDULE]\n\nNO LESSONS';
+    return `[РАСПИСАНИЕ НА СЕГОДНЯ]\n\nЗАНЯТИЙ НЕТ - ВЫХОДНОЙ ДЕНЬ`;
   }
 
-  let text = '[TODAY SCHEDULE]';
-  if (subgroup > 0) text += ` (SUBGROUP ${subgroup})`;
+  let text = subgroup > 0 ? `[РАСПИСАНИЕ НА СЕГОДНЯ] (ПОДГРУППА ${subgroup})` : `[РАСПИСАНИЕ НА СЕГОДНЯ]`;
   text += '\n';
   text += '─'.repeat(30) + '\n\n';
 
@@ -169,11 +203,10 @@ export async function getTomorrowScheduleText(groupNumber, subgroup = 0) {
   const lessons = await getTomorrowLessonsSorted(groupNumber, subgroup);
 
   if (lessons.length === 0) {
-    return '[TOMORROW SCHEDULE]\n\nNO LESSONS';
+    return `[РАСПИСАНИЕ НА ЗАВТРА]\n\nЗАНЯТИЙ НЕТ - ВЫХОДНОЙ ДЕНЬ`;
   }
 
-  let text = '[TOMORROW SCHEDULE]';
-  if (subgroup > 0) text += ` (SUBGROUP ${subgroup})`;
+  let text = subgroup > 0 ? `[РАСПИСАНИЕ НА ЗАВТРА] (ПОДГРУППА ${subgroup})` : `[РАСПИСАНИЕ НА ЗАВТРА]`;
   text += '\n';
   text += '─'.repeat(30) + '\n\n';
 
@@ -188,28 +221,28 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
   const weekdayOrder = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 
-  let text = '[WEEK SCHEDULE]';
-  if (subgroup > 0) text += ` (SUBGROUP ${subgroup})`;
+  let text = subgroup > 0 ? `[РАСПИСАНИЕ НА НЕДЕЛЮ] (ПОДГРУППА ${subgroup})` : `[РАСПИСАНИЕ НА НЕДЕЛЮ]`;
   text += '\n';
   text += '─'.repeat(30) + '\n';
 
-  for (const dayName of weekdayOrder) {
-    const rawLessons = schedule.lessonsByDay[dayName];
-    if (!rawLessons || rawLessons.length === 0) continue;
+  let hasLessons = false;
 
-    const lessons = rawLessons
-      .filter(l => l.source === 'schedules')
-      .map(enrichLesson)
-      .sort((a, b) => a.number - b.number);
+  for (const dayKey of weekdayOrder) {
+    const lessons = getLessonsForDay(schedule, dayKey);
 
     if (lessons.length === 0) continue;
 
-    text += `\n[${dayName.toUpperCase()}]\n`;
+    hasLessons = true;
+    text += `\n[${dayKey.toUpperCase()}]\n`;
     text += '─'.repeat(20) + '\n';
 
     for (const lesson of lessons) {
       text += formatLessonFull(lesson) + '\n\n';
     }
+  }
+
+  if (!hasLessons) {
+    text += `\n[РАСПИСАНИЕ НА НЕДЕЛЮ]\n\nНЕТ ЗАНЯТИЙ НА ЭТОЙ НЕДЕЛЕ`;
   }
 
   return text.trim();
@@ -233,15 +266,15 @@ export async function getNextLessonInfo(groupNumber, subgroup = 0) {
       if (minutesUntil >= 60) {
         const hours = Math.floor(minutesUntil / 60);
         const mins = minutesUntil % 60;
-        timeUntil = mins > 0 ? `${hours}H ${mins}M` : `${hours}H`;
+        timeUntil = mins > 0 ? `${hours}ч ${mins}м` : `${hours}ч`;
       } else {
-        timeUntil = `${minutesUntil}M`;
+        timeUntil = `${minutesUntil}м`;
       }
 
       return {
         isGoingNow: false,
         isNext: true,
-        message: `[NEXT LESSON]\n${'─'.repeat(30)}\n\n${formatLessonShort(lesson)}\n\nSTART: ${timeInfo.start} (IN ${timeUntil})`,
+        message: `[СЛЕДУЮЩАЯ ПАРА]\n${'─'.repeat(30)}\n\n${formatLessonShort(lesson)}\n\nНАЧАЛО: ${timeInfo.start} (ЧЕРЕЗ ${timeUntil})`,
       };
     }
   }
@@ -253,14 +286,14 @@ export async function getNextLessonInfo(groupNumber, subgroup = 0) {
     return {
       isGoingNow: false,
       isNext: false,
-      message: `[NO MORE LESSONS TODAY]\n\nFIRST LESSON TOMORROW:\n${formatLessonShort(firstLesson)}\nSTART: ${timeInfo?.start || '??:??'}`,
+      message: `[БОЛЬШЕ ПАР СЕГОДНЯ НЕТ]\n\nПЕРВАЯ ПАРА ЗАВТРА:\n${formatLessonShort(firstLesson)}\nНАЧАЛО: ${timeInfo?.start || '??:??'}`,
     };
   }
 
   return {
     isGoingNow: false,
     isNext: false,
-    message: '[NO LESSONS TODAY OR TOMORROW]',
+    message: `[НЕТ ПАР СЕГОДНЯ И ЗАВТРА]`,
   };
 }
 
@@ -282,21 +315,21 @@ export async function getCurrentLessonInfo(groupNumber, subgroup = 0) {
       const minutesLeft = endMin - currentTime;
       return {
         isGoingNow: true,
-        message: `[CURRENT LESSON]\n${'─'.repeat(30)}\n\n${formatLessonFull(lesson)}\n\nREMAINING: ${minutesLeft}M`,
+        message: `[ТЕКУЩАЯ ПАРА]\n${'─'.repeat(30)}\n\n${formatLessonFull(lesson)}\n\nОСТАЛОСЬ: ${minutesLeft}м`,
       };
     }
   }
 
   return {
     isGoingNow: false,
-    message: '[NO ACTIVE LESSON]',
+    message: `[НЕТ АКТИВНОЙ ПАРЫ]`,
   };
 }
 
 export async function validateGroup(groupNumber) {
   try {
     const schedule = await getGroupSchedule(groupNumber);
-    return schedule && schedule.lessons !== undefined;
+    return schedule && (schedule.lessons !== undefined || schedule.schedules !== undefined);
   } catch {
     return false;
   }
@@ -322,19 +355,19 @@ export async function searchGroup(query) {
 function formatLessonShort(lesson) {
   const timeInfo = LESSON_TIMES[lesson.number - 1];
   const timeStr = timeInfo ? `${timeInfo.start} - ${timeInfo.end}` : '??:?? - ??:??';
-  const subject = lesson.subject || 'SUBJECT NOT SET';
+  const subject = lesson.subject || 'НЕ УКАЗАНО';
   const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
   const auditoryInfo = parseAuditoryInfo(lesson.auditory);
 
-  let text = `LESSON: ${lesson.number} | TIME: ${timeStr}\n`;
-  text += `SUBJECT: ${subject}`;
+  let text = `ПАРА: ${lesson.number} | ВРЕМЯ: ${timeStr}\n`;
+  text += `ПРЕДМЕТ: ${subject}`;
   if (type) text += ` (${type})`;
-  if (lesson.employee) text += `\nTEACHER: ${lesson.employee.firstName} ${lesson.employee.lastName}`;
+  if (lesson.employee) text += `\nПРЕПОДАВАТЕЛЬ: ${lesson.employee.firstName} ${lesson.employee.lastName}`;
   if (auditoryInfo.room) {
-    text += `\nROOM: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (BLDG ${auditoryInfo.building})`;
+    text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
   }
-  if (lesson.numSubgroup > 0) text += `\nSUBGROUP: ${lesson.numSubgroup}`;
+  if (lesson.numSubgroup > 0) text += `\nПОДГРУППА: ${lesson.numSubgroup}`;
 
   return text;
 }
@@ -342,24 +375,24 @@ function formatLessonShort(lesson) {
 function formatLessonFull(lesson) {
   const timeInfo = LESSON_TIMES[lesson.number - 1];
   const timeStr = timeInfo ? `${timeInfo.start} - ${timeInfo.end}` : '??:?? - ??:??';
-  const subject = lesson.subject || 'SUBJECT NOT SET';
+  const subject = lesson.subject || 'НЕ УКАЗАНО';
   const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
   const teacher = lesson.employee
     ? `${lesson.employee.firstName} ${lesson.employee.lastName}`
-    : 'TEACHER NOT SET';
+    : 'НЕ УКАЗАНО';
   const auditoryInfo = parseAuditoryInfo(lesson.auditory);
 
-  let text = `LESSON: ${lesson.number} | TIME: ${timeStr}\n`;
-  text += `SUBJECT: ${subject}`;
-  if (type) text += `\nTYPE: ${type}`;
-  text += `\nTEACHER: ${teacher}`;
+  let text = `ПАРА: ${lesson.number} | ВРЕМЯ: ${timeStr}\n`;
+  text += `ПРЕДМЕТ: ${subject}`;
+  if (type) text += `\nТИП: ${type}`;
+  text += `\nПРЕПОДАВАТЕЛЬ: ${teacher}`;
   if (auditoryInfo.room) {
-    text += `\nROOM: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (BLDG ${auditoryInfo.building})`;
+    text += `\nАУДИТОРИЯ: ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (КОРПУС ${auditoryInfo.building})`;
   } else {
-    text += `\nROOM: NOT SET`;
+    text += `\nАУДИТОРИЯ: НЕ УКАЗАНО`;
   }
-  if (lesson.numSubgroup > 0) text += `\nSUBGROUP: ${lesson.numSubgroup}`;
+  if (lesson.numSubgroup > 0) text += `\nПОДГРУППА: ${lesson.numSubgroup}`;
 
   return text;
 }
