@@ -1,6 +1,5 @@
 import { createBsuirClient, normalizeSchedule } from 'bsuir-iis-api';
-import { LESSON_TIMES } from './config.js';
-import { t, LESSON_TYPE_KEYS } from './translations.js';
+import { LESSON_TIMES, LESSON_TYPES } from './config.js';
 
 const client = createBsuirClient({
   cache: { ttlMs: 5 * 60 * 1000, maxEntries: 200 },
@@ -11,7 +10,6 @@ const client = createBsuirClient({
 const scheduleCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
 
-// Ключи должны совпадать с тем, что возвращает API (на русском)
 const WEEKDAY_MAP = {
   1: 'Понедельник',
   2: 'Вторник',
@@ -19,16 +17,6 @@ const WEEKDAY_MAP = {
   4: 'Четверг',
   5: 'Пятница',
   6: 'Суббота',
-};
-
-// Маппинг для переводов
-const DAY_TRANSLATION_KEYS = {
-  'Понедельник': 'monday',
-  'Вторник': 'tuesday',
-  'Среда': 'wednesday',
-  'Четверг': 'thursday',
-  'Пятница': 'friday',
-  'Суббота': 'saturday',
 };
 
 function getLessonNumber(timeStr) {
@@ -78,21 +66,20 @@ function enrichLesson(rawLesson) {
   };
 }
 
-function getTodayWeekdayKey() {
+function getTodayWeekday() {
   const day = new Date().getDay();
   return WEEKDAY_MAP[day] || null;
 }
 
-function getTomorrowWeekdayKey() {
+function getTomorrowWeekday() {
   const day = new Date().getDay();
   const tomorrowDay = day === 0 ? 1 : day === 6 ? 7 : day + 1;
   return WEEKDAY_MAP[tomorrowDay] || null;
 }
 
-function getLessonTypeFull(abbrev, lang) {
+function getLessonTypeFull(abbrev) {
   if (!abbrev) return '';
-  const key = LESSON_TYPE_KEYS[abbrev];
-  return key ? t(key, lang) : abbrev;
+  return LESSON_TYPES[abbrev] || abbrev;
 }
 
 function parseAuditoryInfo(auditoryStr) {
@@ -125,29 +112,20 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
       raw = await client.schedule.getGroup(groupNumber, { raw: true });
     }
     const schedule = normalizeSchedule(raw);
-    
-    console.log(`[API] Fetched schedule for ${cacheKey}. Days available:`, Object.keys(schedule.lessonsByDay || {}));
-    
     scheduleCache.set(cacheKey, { data: schedule, timestamp: now });
     return schedule;
   } catch (error) {
-    console.error(`[API] Error fetching schedule for ${cacheKey}:`, error.message);
-    throw new Error('Failed to fetch schedule. Check group number.');
+    console.error(`Error fetching schedule for group ${groupNumber} subgroup ${subgroup}:`, error.message);
+    throw new Error('Не удалось получить расписание. Проверьте номер группы и подгруппу.');
   }
 }
 
 export async function getTodayLessonsSorted(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
-  const todayKey = getTodayWeekdayKey();
-  
-  console.log(`[API] Today is: ${todayKey}`);
-  
-  if (!todayKey || !schedule.lessonsByDay[todayKey]) {
-    console.log(`[API] No lessons found for ${todayKey}`);
-    return [];
-  }
+  const todayName = getTodayWeekday();
+  if (!todayName || !schedule.lessonsByDay[todayName]) return [];
 
-  const lessons = schedule.lessonsByDay[todayKey]
+  const lessons = schedule.lessonsByDay[todayName]
     .filter(l => l.source === 'schedules')
     .map(enrichLesson)
     .sort((a, b) => a.number - b.number);
@@ -157,10 +135,10 @@ export async function getTodayLessonsSorted(groupNumber, subgroup = 0) {
 
 export async function getTomorrowLessonsSorted(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
-  const tomorrowKey = getTomorrowWeekdayKey();
-  if (!tomorrowKey || !schedule.lessonsByDay[tomorrowKey]) return [];
+  const tomorrowName = getTomorrowWeekday();
+  if (!tomorrowName || !schedule.lessonsByDay[tomorrowName]) return [];
 
-  const lessons = schedule.lessonsByDay[tomorrowKey]
+  const lessons = schedule.lessonsByDay[tomorrowName]
     .filter(l => l.source === 'schedules')
     .map(enrichLesson)
     .sort((a, b) => a.number - b.number);
@@ -168,54 +146,55 @@ export async function getTomorrowLessonsSorted(groupNumber, subgroup = 0) {
   return lessons;
 }
 
-export async function getTodayScheduleText(groupNumber, subgroup = 0, lang = 'ru') {
+export async function getTodayScheduleText(groupNumber, subgroup = 0) {
   const lessons = await getTodayLessonsSorted(groupNumber, subgroup);
 
   if (lessons.length === 0) {
-    return t('no_lessons_today', lang);
+    return '[TODAY SCHEDULE]\n\nNO LESSONS';
   }
 
-  let text = subgroup > 0 ? t('today_schedule_sub', lang, { subgroup }) : t('today_schedule', lang);
+  let text = '[TODAY SCHEDULE]';
+  if (subgroup > 0) text += ` (SUBGROUP ${subgroup})`;
   text += '\n';
   text += '─'.repeat(30) + '\n\n';
 
   for (const lesson of lessons) {
-    text += formatLessonFull(lesson, lang) + '\n\n';
+    text += formatLessonFull(lesson) + '\n\n';
   }
 
   return text.trim();
 }
 
-export async function getTomorrowScheduleText(groupNumber, subgroup = 0, lang = 'ru') {
+export async function getTomorrowScheduleText(groupNumber, subgroup = 0) {
   const lessons = await getTomorrowLessonsSorted(groupNumber, subgroup);
 
   if (lessons.length === 0) {
-    return t('no_lessons_tomorrow', lang);
+    return '[TOMORROW SCHEDULE]\n\nNO LESSONS';
   }
 
-  let text = subgroup > 0 ? t('tomorrow_schedule_sub', lang, { subgroup }) : t('tomorrow_schedule', lang);
+  let text = '[TOMORROW SCHEDULE]';
+  if (subgroup > 0) text += ` (SUBGROUP ${subgroup})`;
   text += '\n';
   text += '─'.repeat(30) + '\n\n';
 
   for (const lesson of lessons) {
-    text += formatLessonFull(lesson, lang) + '\n\n';
+    text += formatLessonFull(lesson) + '\n\n';
   }
 
   return text.trim();
 }
 
-export async function getWeekScheduleText(groupNumber, subgroup = 0, lang = 'ru') {
+export async function getWeekScheduleText(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
   const weekdayOrder = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 
-  let text = subgroup > 0 ? t('week_schedule_sub', lang, { subgroup }) : t('week_schedule', lang);
+  let text = '[WEEK SCHEDULE]';
+  if (subgroup > 0) text += ` (SUBGROUP ${subgroup})`;
   text += '\n';
   text += '─'.repeat(30) + '\n';
 
-  let hasLessons = false;
-
-  for (const dayKey of weekdayOrder) {
-    const rawLessons = schedule.lessonsByDay[dayKey];
+  for (const dayName of weekdayOrder) {
+    const rawLessons = schedule.lessonsByDay[dayName];
     if (!rawLessons || rawLessons.length === 0) continue;
 
     const lessons = rawLessons
@@ -225,24 +204,18 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0, lang = 'ru'
 
     if (lessons.length === 0) continue;
 
-    hasLessons = true;
-    const transKey = DAY_TRANSLATION_KEYS[dayKey] || dayKey;
-    text += `\n[${t(transKey, lang).toUpperCase()}]\n`;
+    text += `\n[${dayName.toUpperCase()}]\n`;
     text += '─'.repeat(20) + '\n';
 
     for (const lesson of lessons) {
-      text += formatLessonFull(lesson, lang) + '\n\n';
+      text += formatLessonFull(lesson) + '\n\n';
     }
-  }
-
-  if (!hasLessons) {
-    text += `\n${t('no_lessons_week', lang)}`;
   }
 
   return text.trim();
 }
 
-export async function getNextLessonInfo(groupNumber, subgroup = 0, lang = 'ru') {
+export async function getNextLessonInfo(groupNumber, subgroup = 0) {
   const lessons = await getTodayLessonsSorted(groupNumber, subgroup);
   const now = new Date();
   const currentTime = now.getHours() * 60 + now.getMinutes();
@@ -268,7 +241,7 @@ export async function getNextLessonInfo(groupNumber, subgroup = 0, lang = 'ru') 
       return {
         isGoingNow: false,
         isNext: true,
-        message: `${t('next_lesson', lang)}\n${'─'.repeat(30)}\n\n${formatLessonShort(lesson, lang)}\n\n${t('start', lang)}: ${timeInfo.start} (${t('in', lang)} ${timeUntil})`,
+        message: `[NEXT LESSON]\n${'─'.repeat(30)}\n\n${formatLessonShort(lesson)}\n\nSTART: ${timeInfo.start} (IN ${timeUntil})`,
       };
     }
   }
@@ -280,18 +253,18 @@ export async function getNextLessonInfo(groupNumber, subgroup = 0, lang = 'ru') 
     return {
       isGoingNow: false,
       isNext: false,
-      message: `${t('no_more_today', lang)}\n\n${t('first_tomorrow', lang)}\n${formatLessonShort(firstLesson, lang)}\n${t('start', lang)}: ${timeInfo?.start || '??:??'}`,
+      message: `[NO MORE LESSONS TODAY]\n\nFIRST LESSON TOMORROW:\n${formatLessonShort(firstLesson)}\nSTART: ${timeInfo?.start || '??:??'}`,
     };
   }
 
   return {
     isGoingNow: false,
     isNext: false,
-    message: t('no_lessons_today_tomorrow', lang),
+    message: '[NO LESSONS TODAY OR TOMORROW]',
   };
 }
 
-export async function getCurrentLessonInfo(groupNumber, subgroup = 0, lang = 'ru') {
+export async function getCurrentLessonInfo(groupNumber, subgroup = 0) {
   const lessons = await getTodayLessonsSorted(groupNumber, subgroup);
   const now = new Date();
   const currentTime = now.getHours() * 60 + now.getMinutes();
@@ -309,14 +282,14 @@ export async function getCurrentLessonInfo(groupNumber, subgroup = 0, lang = 'ru
       const minutesLeft = endMin - currentTime;
       return {
         isGoingNow: true,
-        message: `${t('current_lesson', lang)}\n${'─'.repeat(30)}\n\n${formatLessonFull(lesson, lang)}\n\n${t('remaining', lang)}: ${minutesLeft}M`,
+        message: `[CURRENT LESSON]\n${'─'.repeat(30)}\n\n${formatLessonFull(lesson)}\n\nREMAINING: ${minutesLeft}M`,
       };
     }
   }
 
   return {
     isGoingNow: false,
-    message: t('no_active_lesson', lang),
+    message: '[NO ACTIVE LESSON]',
   };
 }
 
@@ -346,47 +319,47 @@ export async function searchGroup(query) {
   }
 }
 
-function formatLessonShort(lesson, lang) {
+function formatLessonShort(lesson) {
   const timeInfo = LESSON_TIMES[lesson.number - 1];
   const timeStr = timeInfo ? `${timeInfo.start} - ${timeInfo.end}` : '??:?? - ??:??';
-  const subject = lesson.subject || t('not_set', lang);
-  const type = getLessonTypeFull(lesson.lessonTypeAbbrev, lang);
+  const subject = lesson.subject || 'SUBJECT NOT SET';
+  const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
   const auditoryInfo = parseAuditoryInfo(lesson.auditory);
 
-  let text = `${t('lesson', lang)}: ${lesson.number} | ${t('time', lang)}: ${timeStr}\n`;
-  text += `${t('subject', lang)}: ${subject}`;
+  let text = `LESSON: ${lesson.number} | TIME: ${timeStr}\n`;
+  text += `SUBJECT: ${subject}`;
   if (type) text += ` (${type})`;
-  if (lesson.employee) text += `\n${t('teacher', lang)}: ${lesson.employee.firstName} ${lesson.employee.lastName}`;
+  if (lesson.employee) text += `\nTEACHER: ${lesson.employee.firstName} ${lesson.employee.lastName}`;
   if (auditoryInfo.room) {
-    text += `\n${t('room', lang)}: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (${t('bldg', lang)} ${auditoryInfo.building})`;
+    text += `\nROOM: ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (BLDG ${auditoryInfo.building})`;
   }
-  if (lesson.numSubgroup > 0) text += `\n${t('subgroup', lang)}: ${lesson.numSubgroup}`;
+  if (lesson.numSubgroup > 0) text += `\nSUBGROUP: ${lesson.numSubgroup}`;
 
   return text;
 }
 
-function formatLessonFull(lesson, lang) {
+function formatLessonFull(lesson) {
   const timeInfo = LESSON_TIMES[lesson.number - 1];
   const timeStr = timeInfo ? `${timeInfo.start} - ${timeInfo.end}` : '??:?? - ??:??';
-  const subject = lesson.subject || t('not_set', lang);
-  const type = getLessonTypeFull(lesson.lessonTypeAbbrev, lang);
+  const subject = lesson.subject || 'SUBJECT NOT SET';
+  const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
   const teacher = lesson.employee
     ? `${lesson.employee.firstName} ${lesson.employee.lastName}`
-    : t('not_set', lang);
+    : 'TEACHER NOT SET';
   const auditoryInfo = parseAuditoryInfo(lesson.auditory);
 
-  let text = `${t('lesson', lang)}: ${lesson.number} | ${t('time', lang)}: ${timeStr}\n`;
-  text += `${t('subject', lang)}: ${subject}`;
-  if (type) text += `\n${t('type', lang)}: ${type}`;
-  text += `\n${t('teacher', lang)}: ${teacher}`;
+  let text = `LESSON: ${lesson.number} | TIME: ${timeStr}\n`;
+  text += `SUBJECT: ${subject}`;
+  if (type) text += `\nTYPE: ${type}`;
+  text += `\nTEACHER: ${teacher}`;
   if (auditoryInfo.room) {
-    text += `\n${t('room', lang)}: ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (${t('bldg', lang)} ${auditoryInfo.building})`;
+    text += `\nROOM: ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (BLDG ${auditoryInfo.building})`;
   } else {
-    text += `\n${t('room', lang)}: ${t('not_set', lang)}`;
+    text += `\nROOM: NOT SET`;
   }
-  if (lesson.numSubgroup > 0) text += `\n${t('subgroup', lang)}: ${lesson.numSubgroup}`;
+  if (lesson.numSubgroup > 0) text += `\nSUBGROUP: ${lesson.numSubgroup}`;
 
   return text;
 }
