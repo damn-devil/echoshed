@@ -13,22 +13,13 @@ import {
   getUser,
   isUserRegistered,
   updateNotificationSetting,
-  updateLanguage,
   getNotificationSettings,
   getUserCount,
-  getUserLanguage,
   getUsersList,
 } from './database.js';
-import { t, getMainMenuKeyboard } from './translations.js';
-
 
 export function createBot(token) {
   const bot = new TelegramBot(token, { polling: true });
-
-  function getMenu(chatId) {
-    const lang = getUserLanguage(chatId);
-    return getMainMenuKeyboard(lang);
-  }
 
   async function safeAnswerCallback(id, options = {}) {
     try {
@@ -51,7 +42,7 @@ export function createBot(token) {
     }
   }
 
-  async function handleCommand(chatId, cmd, lang, user) {
+  async function handleCommand(chatId, cmd, user) {
     try {
       const sub = user?.subgroup || 0;
       const group = user?.group_number;
@@ -59,69 +50,88 @@ export function createBot(token) {
 
       switch (cmd) {
         case 'today':
-          result = await getTodayScheduleText(group, sub, lang);
+          result = await getTodayScheduleText(group, sub);
           break;
         case 'tomorrow':
-          result = await getTomorrowScheduleText(group, sub, lang);
+          result = await getTomorrowScheduleText(group, sub);
           break;
         case 'week':
-          result = await getWeekScheduleText(group, sub, lang);
+          result = await getWeekScheduleText(group, sub);
           break;
         case 'next':
-          result = (await getNextLessonInfo(group, sub, lang)).message;
+          result = (await getNextLessonInfo(group, sub)).message;
           break;
         case 'now':
-          result = (await getCurrentLessonInfo(group, sub, lang)).message;
+          result = (await getCurrentLessonInfo(group, sub)).message;
           break;
         case 'settings':
           const settings = getNotificationSettings(chatId);
-          await bot.sendMessage(chatId, t('notification_settings', lang), {
+          await bot.sendMessage(chatId, '⚙️ Настройки уведомлений:', {
             reply_markup: {
               inline_keyboard: [
-                [{ text: settings.lessonStart ? t('lesson_start_on', lang) : t('lesson_start_off', lang), callback_data: 'toggle_lesson_start' }],
-                [{ text: settings.lessonWarning ? t('lesson_warning_on', lang) : t('lesson_warning_off', lang), callback_data: 'toggle_lesson_warning' }],
-                [{ text: settings.breakStart ? t('break_start_on', lang) : t('break_start_off', lang), callback_data: 'toggle_break_start' }],
-                [{ text: settings.breakWarning ? t('break_warning_on', lang) : t('break_warning_off', lang), callback_data: 'toggle_break_warning' }],
+                [{ text: settings.lessonStart ? '✅ Начало пары' : '⬜ Начало пары', callback_data: 'toggle_lesson_start' }],
+                [{ text: settings.lessonWarning ? '✅ Предупреждение за 3 мин' : '⬜ Предупреждение за 3 мин', callback_data: 'toggle_lesson_warning' }],
+                [{ text: settings.breakStart ? '✅ Начало перемены' : '⬜ Начало перемены', callback_data: 'toggle_break_start' }],
+                [{ text: settings.breakWarning ? '✅ Предупреждение о перемене' : '⬜ Предупреждение о перемене', callback_data: 'toggle_break_warning' }],
               ],
             },
           });
           return;
         case 'group':
-          await bot.sendMessage(chatId, t('send_new_group', lang));
+          await bot.sendMessage(chatId, 'ОТПРАВЬ НОВЫЙ НОМЕР ГРУППЫ:');
           return;
-        case 'lang':
-           await bot.sendMessage(chatId, t('lang_select', lang), {
-             reply_markup: {
-               inline_keyboard: [
-                 [{ text: t('lang_ru', lang), callback_data: 'lang_ru' }],
-               ],
-             },
-           });
-           return;
         case 'help':
-          await bot.sendMessage(chatId, t('help', lang), { reply_markup: getMenu(chatId) });
+          await bot.sendMessage(chatId, `КОМАНДЫ:
+/start - РЕГИСТРАЦИЯ
+/today - РАСПИСАНИЕ НА СЕГОДНЯ
+/tomorrow - РАСПИСАНИЕ НА ЗАВТРА
+/week - РАСПИСАНИЕ НА НЕДЕЛЮ
+/next - СЛЕДУЮЩАЯ ПАРА
+/now - ТЕКУЩАЯ ПАРА
+/settings - НАСТРОЙКИ УВЕДОМЛЕНИЙ
+/group - СМЕНИТЬ ГРУППУ
+/schedule - ВРЕМЯ ПАР
+/users - СТАТИСТИКА (АДМИН)
+/help - ЭТА СПРАВКА`);
           return;
         default:
           return;
       }
-      await bot.sendMessage(chatId, result, { reply_markup: getMenu(chatId) });
+      await bot.sendMessage(chatId, result);
     } catch (error) {
-      await bot.sendMessage(chatId, t('fetch_failed', lang, { error: error.message }), { reply_markup: getMenu(chatId) });
+      await bot.sendMessage(chatId, `ОШИБКА ПОЛУЧЕНИЯ ДАННЫХ\nERROR: ${error.message}`);
     }
   }
 
   bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
-    const lang = getUserLanguage(chatId);
 
     if (isUserRegistered(chatId)) {
       const user = getUser(chatId);
       const subgroupText = user.subgroup > 0 ? user.subgroup : '0';
-      await bot.sendMessage(chatId, t('registered', lang, { group: user.group_number, subgroup: subgroupText }), {
-        reply_markup: getMenu(chatId),
-      });
+      await bot.sendMessage(chatId, `[ПОСЛЕ РЕГИСТРАЦИИ]
+
+STATUS: REGISTERED
+GROUP: ${user.group_number}
+SUBGROUP: ${subgroupText}
+NOTIFICATIONS: ACTIVE
+COMMANDS: READY`);
     } else {
-      await bot.sendMessage(chatId, t('welcome', lang));
+      await bot.sendMessage(chatId, `$ BSUIR_BOT_SYSTEM v1.0
+> INITIALIZING...
+> TOKEN_CHECK: OK
+> DATABASE_CONNECTION: ACTIVE
+> API_ENDPOINT: bsuir-api.by
+> POLLING: ENABLED
+> BOT_STATUS: ONLINE
+> WAITING_FOR_INPUT...
+ФУНКЦИОНАЛ:
+├─ АВТО-УВЕДОМЛЕНИЯ О НАЧАЛЕ ПАР
+├─ АВТО-УВЕДОМЛЕНИЯ О ПЕРЕМЕНАХ
+├─ ПРЕДУПРЕЖДЕНИЕ ЗА 3 МИНУТЫ
+├─ УКАЗАНИЕ АУДИТОРИИ И КОРПУСА
+└─ АВТОМАТИЧЕСКАЯ ФИЛЬТРАЦИЯ ПОДГРУПП 
+ЗАПРОС: ВВЕДИТЕ НОМЕР ГРУППЫ ДЛЯ РЕГИСТРАЦИИ`);
     }
   });
 
@@ -136,7 +146,7 @@ export function createBot(token) {
       const sg = u.subgroup > 0 ? u.subgroup : '0';
       return `${i + 1}. [${u.group_number}] SG:${sg} LANG:${u.language} ID:${u.chat_id}`;
     }).join('\n');
-    await bot.sendMessage(msg.chat.id, t('users_list', 'ru', { count, list }), { reply_markup: getMenu(msg.chat.id) });
+    await bot.sendMessage(msg.chat.id, `ЗАРЕГИСТРИРОВАННЫЕ ПОЛЬЗОВАТЕЛИ (${count}):\n${list}`);
   });
 
   bot.onText(/\/stats/, async (msg) => {
@@ -145,37 +155,15 @@ export function createBot(token) {
       return;
     }
     const count = getUserCount();
-    const lang = getUserLanguage(msg.chat.id);
-    await bot.sendMessage(msg.chat.id, t('stats', lang, { count }), { reply_markup: getMenu(msg.chat.id) });
+    await bot.sendMessage(msg.chat.id, `СТАТИСТИКА:\nПОЛЬЗОВАТЕЛЕЙ: ${count}`);
   });
 
   bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const data = callbackQuery.data;
-    const lang = getUserLanguage(chatId);
     const msgId = callbackQuery.message.message_id;
 
-    console.log(`Callback received: ${data}`); // Для отладки
-
-    if (data.startsWith('lang_')) {
-      const newLang = data.replace('lang_', '');
-      updateLanguage(chatId, newLang);
-      const msg = newLang === 'ru' ? t('lang_changed', 'ru') : t('lang_changed_en', 'en');
-       await safeEditMessage('editMessageText', chatId, msgId, msg, {
-         reply_markup: {
-           inline_keyboard: [
-             [{ text: newLang === 'ru' ? '[x] Русский' : '[ ] Русский', callback_data: 'noop_ru' }],
-           ],
-         },
-       });
-      await safeAnswerCallback(callbackQuery.id, { text: msg });
-      return;
-    }
-
-    if (data.startsWith('noop_')) {
-      await safeAnswerCallback(callbackQuery.id);
-      return;
-    }
+    console.log(`Callback received: ${data}`);
 
     if (data.startsWith('subgroup_')) {
       const parts = data.split('_');
@@ -184,18 +172,22 @@ export function createBot(token) {
 
       const isValid = await validateGroup(groupName);
       if (!isValid) {
-        await safeAnswerCallback(callbackQuery.id, { text: t('error_group_not_found', lang) });
+        await safeAnswerCallback(callbackQuery.id, { text: '❌ Группа не найдена' });
         return;
       }
 
-      registerUser(chatId, groupName, subgroup, lang);
+      registerUser(chatId, groupName, subgroup);
       const user = getUser(chatId);
       const subgroupText = user.subgroup > 0 ? user.subgroup : '0';
 
-      await safeEditMessage('editMessageText', chatId, msgId, t('registered', lang, { group: groupName, subgroup: subgroupText }), {
-        reply_markup: getMenu(chatId),
-      });
-      await safeAnswerCallback(callbackQuery.id, { text: t('done', lang) });
+      await safeEditMessage('editMessageText', chatId, msgId, `[ПОСЛЕ РЕГИСТРАЦИИ]
+
+STATUS: REGISTERED
+GROUP: ${groupName}
+SUBGROUP: ${subgroupText}
+NOTIFICATIONS: ACTIVE
+COMMANDS: READY`);
+      await safeAnswerCallback(callbackQuery.id, { text: '✅ Готово' });
       return;
     }
 
@@ -204,22 +196,19 @@ export function createBot(token) {
       const settings = getNotificationSettings(chatId);
       updateNotificationSetting(chatId, settingKey, !settings[settingKey]);
       const newSettings = getNotificationSettings(chatId);
-      const state = newSettings[settingKey] ? t('enabled', lang) : t('disabled', lang);
+      const state = newSettings[settingKey] ? 'ВКЛЮЧЕНО' : 'ВЫКЛЮЧЕНО';
 
       await safeEditMessage('editMessageReplyMarkup', chatId, msgId, {
         inline_keyboard: [
-          [{ text: newSettings.lessonStart ? t('lesson_start_on', lang) : t('lesson_start_off', lang), callback_data: 'toggle_lesson_start' }],
-          [{ text: newSettings.lessonWarning ? t('lesson_warning_on', lang) : t('lesson_warning_off', lang), callback_data: 'toggle_lesson_warning' }],
-          [{ text: newSettings.breakStart ? t('break_start_on', lang) : t('break_start_off', lang), callback_data: 'toggle_break_start' }],
-          [{ text: newSettings.breakWarning ? t('break_warning_on', lang) : t('break_warning_off', lang), callback_data: 'toggle_break_warning' }],
+          [{ text: newSettings.lessonStart ? '✅ Начало пары' : '⬜ Начало пары', callback_data: 'toggle_lesson_start' }],
+          [{ text: newSettings.lessonWarning ? '✅ Предупреждение за 3 мин' : '⬜ Предупреждение за 3 мин', callback_data: 'toggle_lesson_warning' }],
+          [{ text: newSettings.breakStart ? '✅ Начало перемены' : '⬜ Начало перемены', callback_data: 'toggle_break_start' }],
+          [{ text: newSettings.breakWarning ? '✅ Предупреждение о перемене' : '⬜ Предупреждение о перемене', callback_data: 'toggle_break_warning' }],
         ],
       });
       await safeAnswerCallback(callbackQuery.id, { text: state });
       return;
     }
-
-    // Обработка кнопок меню из инлайна (если вдруг)
-    
 
     await safeAnswerCallback(callbackQuery.id);
   });
@@ -227,21 +216,17 @@ export function createBot(token) {
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
-    const lang = getUserLanguage(chatId);
 
     if (!text) return;
 
-    // Обработка команд из меню
-    
-
     if (text.startsWith('/')) {
       const cmd = text.split('@')[0].substring(1);
-      if (['today', 'tomorrow', 'week', 'next', 'now', 'settings', 'group', 'lang', 'help', 'schedule'].includes(cmd)) {
+      if (['today', 'tomorrow', 'week', 'next', 'now', 'settings', 'group', 'help', 'schedule'].includes(cmd)) {
         if (isUserRegistered(chatId)) {
           const user = getUser(chatId);
-          await handleCommand(chatId, cmd, lang, user);
+          await handleCommand(chatId, cmd, user);
         } else {
-          await bot.sendMessage(chatId, t('not_registered', lang), { reply_markup: getMenu(chatId) });
+          await bot.sendMessage(chatId, 'ВЫ НЕ ЗАРЕГИСТРИРОВАНЫ\nОТПРАВЬТЕ НОМЕР ГРУППЫ ДЛЯ РЕГИСТРАЦИИ');
         }
         return;
       }
@@ -254,17 +239,17 @@ export function createBot(token) {
       const isValid = await validateGroup(groupNumber);
 
       if (isValid) {
-        await bot.sendMessage(chatId, t('group_found', lang, { group: groupNumber }), {
+        await bot.sendMessage(chatId, `[ПОДГРУППА]\n\nГРУППА НАЙДЕНА: ${groupNumber}\nВЫБЕРИТЕ ПОДГРУППУ:`, {
           reply_markup: {
             inline_keyboard: [
-              [{ text: t('select_subgroup_1', lang), callback_data: `subgroup_1_${groupNumber}` },
-               { text: t('select_subgroup_2', lang), callback_data: `subgroup_2_${groupNumber}` }],
-              [{ text: t('select_subgroup_0', lang), callback_data: `subgroup_0_${groupNumber}` }],
+              [{ text: '👥 Подгруппа 1', callback_data: `subgroup_1_${groupNumber}` },
+               { text: '👥 Подгруппа 2', callback_data: `subgroup_2_${groupNumber}` }],
+              [{ text: '📋 Общая (все потоки)', callback_data: `subgroup_0_${groupNumber}` }],
             ],
           },
         });
       } else {
-        await bot.sendMessage(chatId, t('group_not_found', lang, { group: groupNumber }));
+        await bot.sendMessage(chatId, `[ОШИБКА ГРУППЫ]\n\nERROR: ГРУППА ${groupNumber} НЕ НАЙДЕНА\nПРОВЕРЬТЕ НОМЕР И ПОВТОРИТЕ\nФОРМАТ: XXXXXX (6 ЦИФР)`);
       }
       return;
     }
@@ -275,9 +260,9 @@ export function createBot(token) {
         const keyboard = results.map(r => [
           { text: r.name + (r.faculty ? ` (${r.faculty})` : ''), callback_data: `subgroup_0_${r.name}` },
         ]);
-        await bot.sendMessage(chatId, t('groups_found', lang), { reply_markup: { inline_keyboard: keyboard } });
+        await bot.sendMessage(chatId, 'ГРУППЫ НАЙДЕНЫ:\n\nВЫБЕРИТЕ СВОЮ ГРУППУ:', { reply_markup: { inline_keyboard: keyboard } });
       } else {
-        await bot.sendMessage(chatId, t('group_not_found_search', lang));
+        await bot.sendMessage(chatId, 'ГРУППА НЕ НАЙДЕНА. ОТПРАВЬТЕ НОМЕР ГРУППЫ ИЛИ ПОПРОБУЙТЕ ДРУГОЕ НАЗВАНИЕ.');
       }
       return;
     }
