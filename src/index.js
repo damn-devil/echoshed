@@ -11,9 +11,15 @@ const port = process.env.PORT || 3000;
 console.log('--- STARTUP ---');
 console.log('PORT:', port);
 console.log('TOKEN_EXISTS:', !!token);
+console.log('DATABASE_URL_SET:', !!process.env.DATABASE_URL);
 
 if (!token) {
   console.error('Error: TELEGRAM_BOT_TOKEN is missing!');
+  process.exit(1);
+}
+
+if (!process.env.DATABASE_URL) {
+  console.error('Error: DATABASE_URL is missing!');
   process.exit(1);
 }
 
@@ -34,6 +40,7 @@ server.listen(port, '0.0.0.0', async () => {
   console.log(`HTTP server listening on 0.0.0.0:${port}`);
   
   try {
+    console.log('Connecting to Database...');
     await connectDatabase();
     console.log('[DB] Database connected');
     
