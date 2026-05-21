@@ -1,25 +1,40 @@
-import { Redis } from '@upstash/redis';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DATA_FILE = join(__dirname, '..', 'data', 'bot.json');
 
-if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-  console.error('UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN is not set!');
-  process.exit(1);
+function ensureDataFile() {
+  if (!existsSync(DATA_FILE)) {
+    writeFileSync(DATA_FILE, JSON.stringify({ users: {}, notificationLog: [] }, null, 2));
+  }
+}
+
+function readData() {
+  ensureDataFile();
+  return JSON.parse(readFileSync(DATA_FILE, 'utf-8'));
+}
+
+function writeData(data) {
+  ensureDataFile();
+  writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
 export async function connectDatabase() {
-  await redis.ping();
-  console.log('[DB] Redis connected');
+  ensureDataFile();
+  console.log('[DB] Local file storage ready');
 }
 
 export async function registerUser(chatId, groupNumber, subgroup = 0, language = 'ru', username = null) {
-  const key = `user:${chatId}`;
-  const exists = await redis.exists(key);
-  const data = {
-    chat_id: String(chatId),
+  const data = readData();
+  const chatIdStr = String(chatId);
+  const now = new Date().toISOString();
+  const exists = data.users[chatIdStr];
+
+  data.users[chatIdStr] = {
+    chat_id: chatIdStr,
     group_number: groupNumber,
     subgroup: subgroup,
     language: language,
@@ -28,80 +43,74 @@ export async function registerUser(chatId, groupNumber, subgroup = 0, language =
     notifications_break_start: true,
     notifications_break_warning: true,
     notifications_lesson_warning: true,
+    created_at: exists ? data.users[chatIdStr].created_at : now,
+    updated_at: now,
   };
-  await redis.hset(key, data);
-  if (!exists) {
-    await redis.sadd('users:all', String(chatId));
-  }
+
+  writeData(data);
 }
 
 export async function getUser(chatId) {
-  const data = await redis.hgetall(`user:${chatId}`);
-  if (!data || Object.keys(data).length === 0) return null;
-  return {
-    chat_id: data.chat_id,
-    group_number: data.group_number,
-    subgroup: parseInt(data.subgroup) || 0,
-    language: data.language || 'ru',
-    username: data.username || null,
-  };
+  const data = readData();
+  return data.users[String(chatId)] || null;
 }
 
 export async function isUserRegistered(chatId) {
-  return await redis.exists(`user:${chatId}`);
+  const data = readData();
+  return !!data.users[String(chatId)];
 }
 
 export async function getUserCount() {
-  return await redis.scard('users:all');
+  const data = readData();
+  return Object.keys(data.users).length;
 }
 
 export async function getUsersList() {
-  const chatIds = await redis.smembers('users:all');
-  const users = [];
-  for (const id of chatIds) {
-    const data = await redis.hgetall(`user:${id}`);
-    if (data && Object.keys(data).length > 0) {
-      users.push({
-        chat_id: data.chat_id,
-        group_number: data.group_number,
-        subgroup: parseInt(data.subgroup) || 0,
-        language: data.language || 'ru',
-        username: data.username || null,
-        created_at: data.created_at || '',
-      });
-    }
-  }
-  return users;
+  const data = readData();
+  return Object.values(data.users).map(u => ({
+    chat_id: u.chat_id,
+    group_number: u.group_number,
+    subgroup: u.subgroup || 0,
+    language: u.language || 'ru',
+    username: u.username || null,
+    created_at: u.created_at || '',
+  }));
 }
 
 export async function logNotification(chatId, type, pairNumber) {
-  const today = new Date().toISOString().split('T')[0];
-  const key = `notif:${chatId}:${type}:${pairNumber}:${today}`;
-  await redis.set(key, '1', { ex: 86400 });
+  const data = readData();
+  data.notificationLog.push({
+    chat_id: String(chatId),
+    type,
+    pair_number: pairNumber,
+    timestamp: new Date().toISOString(),
+  });
+  // Оставляем только последние 1000 записей
+  if (data.notificationLog.length > 1000) {
+    data.notificationLog = data.notificationLog.slice(-1000);
+  }
+  writeData(data);
 }
 
 export async function wasNotificationSent(chatId, type, pairNumber, date) {
-  const key = `notif:${chatId}:${type}:${pairNumber}:${date}`;
-  return await redis.exists(key);
+  const data = readData();
+  return data.notificationLog.some(
+    log => log.chat_id === String(chatId) &&
+           log.type === type &&
+           log.pair_number === pairNumber &&
+           log.timestamp.startsWith(date)
+  );
 }
 
 export async function getAllUsers() {
-  const chatIds = await redis.smembers('users:all');
-  const users = [];
-  for (const id of chatIds) {
-    const data = await redis.hgetall(`user:${id}`);
-    if (data && Object.keys(data).length > 0) {
-      const hasNotifs = data.notifications_lesson_start !== 'false';
-      if (hasNotifs) {
-        users.push({
-          chat_id: data.chat_id,
-          group_number: data.group_number,
-          subgroup: parseInt(data.subgroup) || 0,
-        });
-      }
-    }
-  }
-  return users;
+  const data = readData();
+  return Object.values(data.users)
+    .filter(u => u.notifications_lesson_start !== false)
+    .map(u => ({
+      chat_id: u.chat_id,
+      group_number: u.group_number,
+      subgroup: u.subgroup || 0,
+    }));
 }
 
 export async function closeDatabase() {}
