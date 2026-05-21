@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { createBot } from './bot.js';
 import { startNotificationScheduler } from './scheduler.js';
+import { startExamNotifier } from './exam-notifier.js';
 import { connectDatabase, closeDatabase } from './database.js';
 import http from 'http';
 
@@ -50,6 +51,10 @@ server.listen(port, '0.0.0.0', async () => {
     console.log('Starting scheduler...');
     startNotificationScheduler(bot);
     console.log('Scheduler started.');
+    
+    console.log('Starting exam notifier...');
+    startExamNotifier(bot);
+    console.log('Exam notifier started.');
     
     console.log('Bot is running!');
   } catch (error) {
