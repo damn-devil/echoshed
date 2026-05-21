@@ -14,7 +14,7 @@ export const BREAK_TIMES = [
   { after: 3, start: '13:25', end: '13:35', duration: 10 },
   { after: 4, start: '15:00', end: '15:30', duration: 30 },
   { after: 5, start: '16:55', end: '17:05', duration: 10 },
-  { after: 6, start: '18:30', end: '18:40', duration: 10 },
+  { after: 6, start: '18:30', end: '18:40', duration: 30 },
 ];
 
 export const WEEKDAYS_RU = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
