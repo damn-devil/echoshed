@@ -7,6 +7,8 @@ import {
 } from './database.js';
 import { createBsuirClient } from 'bsuir-iis-api';
 
+const sentExams = new Set();
+
 const client = createBsuirClient({
   cache: { ttlMs: 10 * 60 * 1000, maxEntries: 100 },
   retries: 2,
@@ -44,7 +46,7 @@ function getTomorrowDate() {
 
 function formatExamCard(exam) {
   const subject = exam.subject || '❓';
-  const type = exam.lessonTypeAbbrev === 'Экз' ? '📝 Экзамен' : '💬 Консультация';
+  const type = exam.lessonTypeAbbrev === 'Экзамен' || exam.lessonTypeAbbrev === 'Экз' ? '📝 Экзамен' : '💬 Консультация';
   const time = exam.startLessonTime ? `⏰ ${exam.startLessonTime}` : '';
   const room = exam.auditories?.[0] ? `📍 ${exam.auditories[0]}` : '';
   const teacher = exam.employees?.[0]
@@ -55,10 +57,8 @@ function formatExamCard(exam) {
 }
 
 export function startExamNotifier(bot) {
-  // Каждый час с 10:00 до 22:00 (UTC) = 13:00-01:00 (Минск)
-  // чтобы не пропустить из-за сна Render
   cron.schedule('0 10-22 * * *', async () => {
-    const tomorrowDate = getTomorrowDate(); // формат DD.MM.YYYY
+    const tomorrowDate = getTomorrowDate();
     const today = new Date().toISOString().split('T')[0];
 
     console.log(`[EXAM] Checking exams for tomorrow: ${tomorrowDate}`);
@@ -79,7 +79,11 @@ export function startExamNotifier(bot) {
         if (tomorrowExams.length === 0) continue;
 
         const cacheKey = `exam_${tomorrowDate}`;
+        const dedupKey = `${chatId}:${cacheKey}:${today}`;
+        if (sentExams.has(dedupKey)) continue;
         if (await wasNotificationSent(chatId, cacheKey, 0, today)) continue;
+
+        sentExams.add(dedupKey);
 
         let message = `📢 ЗАВТРА ЭКЗАМЕНЫ/КОНСУЛЬТАЦИИ:\n\n`;
         for (const exam of tomorrowExams) {
