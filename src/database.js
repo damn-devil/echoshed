@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -7,6 +7,8 @@ const __dirname = dirname(__filename);
 const DATA_FILE = join(__dirname, '..', 'data', 'bot.json');
 
 function ensureDataFile() {
+  const dataDir = dirname(DATA_FILE);
+  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   if (!existsSync(DATA_FILE)) {
     writeFileSync(DATA_FILE, JSON.stringify({ users: {}, notificationLog: [] }, null, 2));
   }
@@ -85,7 +87,6 @@ export async function logNotification(chatId, type, pairNumber) {
     pair_number: pairNumber,
     timestamp: new Date().toISOString(),
   });
-  // Оставляем только последние 1000 записей
   if (data.notificationLog.length > 1000) {
     data.notificationLog = data.notificationLog.slice(-1000);
   }
