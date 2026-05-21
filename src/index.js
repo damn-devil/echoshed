@@ -11,15 +11,9 @@ const port = process.env.PORT || 3000;
 console.log('--- STARTUP ---');
 console.log('PORT:', port);
 console.log('TOKEN_EXISTS:', !!token);
-console.log('REDIS_URL_SET:', !!process.env.UPSTASH_REDIS_REST_URL);
 
 if (!token) {
   console.error('Error: TELEGRAM_BOT_TOKEN is missing!');
-  process.exit(1);
-}
-
-if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-  console.error('Error: Upstash Redis credentials are missing!');
   process.exit(1);
 }
 
@@ -40,19 +34,15 @@ server.listen(port, '0.0.0.0', async () => {
   console.log(`HTTP server listening on 0.0.0.0:${port}`);
   
   try {
-    console.log('Connecting to Redis...');
     await connectDatabase();
     console.log('[DB] Database connected');
     
-    console.log('Initializing bot...');
     const bot = createBot(token);
     console.log('Bot initialized.');
     
-    console.log('Starting scheduler...');
     startNotificationScheduler(bot);
     console.log('Scheduler started.');
     
-    console.log('Starting exam notifier...');
     startExamNotifier(bot);
     console.log('Exam notifier started.');
     
