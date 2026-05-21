@@ -237,11 +237,11 @@ export async function getTodayScheduleText(groupNumber, subgroup = 0) {
     return `📅 РАСПИСАНИЕ НА СЕГОДНЯ\n\n❌ Занятий нет — выходной день`;
   }
 
-  let text = `📅 РАСПИСАНИЕ НА СЕГОДНЯ${subgroup > 0 ? ` (п/г ${subgroup})` : ''}\n`;
-  text += '─'.repeat(30) + '\n';
+  let text = `📅 РАСПИСАНИЕ НА СЕГОДНЯ${subgroup > 0 ? ` (п/г ${subgroup})` : ''}\n\n`;
 
-  for (const lesson of lessons) {
-    text += formatLessonCompact(lesson) + '\n';
+  for (let i = 0; i < lessons.length; i++) {
+    if (i > 0) text += '─'.repeat(25) + '\n';
+    text += formatLessonCompact(lessons[i]) + '\n';
   }
 
   return text.trim();
@@ -254,11 +254,11 @@ export async function getTomorrowScheduleText(groupNumber, subgroup = 0) {
     return `📅 РАСПИСАНИЕ НА ЗАВТРА\n\n❌ Занятий нет — выходной день`;
   }
 
-  let text = `📅 РАСПИСАНИЕ НА ЗАВТРА${subgroup > 0 ? ` (п/г ${subgroup})` : ''}\n`;
-  text += '─'.repeat(30) + '\n';
+  let text = `📅 РАСПИСАНИЕ НА ЗАВТРА${subgroup > 0 ? ` (п/г ${subgroup})` : ''}\n\n`;
 
-  for (const lesson of lessons) {
-    text += formatLessonCompact(lesson) + '\n';
+  for (let i = 0; i < lessons.length; i++) {
+    if (i > 0) text += '─'.repeat(25) + '\n';
+    text += formatLessonCompact(lessons[i]) + '\n';
   }
 
   return text.trim();
@@ -268,8 +268,7 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
   const weekdayOrder = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 
-  let text = `📅 РАСПИСАНИЕ НА НЕДЕЛЮ${subgroup > 0 ? ` (п/г ${subgroup})` : ''}\n`;
-  text += '─'.repeat(30) + '\n';
+  let text = `📅 РАСПИСАНИЕ НА НЕДЕЛЮ${subgroup > 0 ? ` (п/г ${subgroup})` : ''}\n\n`;
 
   let hasLessons = false;
 
@@ -278,16 +277,18 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0) {
     if (lessons.length === 0) continue;
 
     hasLessons = true;
-    text += `\n📌 ${dayKey.toUpperCase()}\n`;
-    text += '─'.repeat(20) + '\n';
+    text += `📌 ${dayKey.toUpperCase()}\n`;
 
-    for (const lesson of lessons) {
-      text += formatLessonCompact(lesson) + '\n';
+    for (let i = 0; i < lessons.length; i++) {
+      if (i > 0) text += '─'.repeat(25) + '\n';
+      text += formatLessonCompact(lessons[i]) + '\n';
     }
+
+    text += '\n';
   }
 
   if (!hasLessons) {
-    text += `\n\n❌ Нет занятий на этой неделе`;
+    text += `❌ Нет занятий на этой неделе`;
   }
 
   return text.trim();
