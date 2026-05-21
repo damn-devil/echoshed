@@ -5,6 +5,7 @@ import {
   getWeekScheduleText,
   getNextLessonInfo,
   getCurrentLessonInfo,
+  getExamsText,
   validateGroup,
   searchGroup,
 } from './bsuir-api.js';
@@ -31,6 +32,8 @@ const TEXT_COMMANDS = {
   'расписание': 'schedule',
   'время': 'schedule',
   'пары': 'schedule',
+  'экзамены': 'exams',
+  'exam': 'exams',
 };
 
 const pendingGroup = new Map();
@@ -63,6 +66,9 @@ export function createBot(token) {
         case 'week':
           result = await getWeekScheduleText(group, sub);
           break;
+        case 'exams':
+          result = await getExamsText(group);
+          break;
         case 'next':
           result = (await getNextLessonInfo(group, sub)).message;
           break;
@@ -90,6 +96,7 @@ export function createBot(token) {
 /today или "сегодня" — Расписание на сегодня
 /tomorrow или "завтра" — Расписание на завтра
 /week или "неделя" — Расписание на неделю
+/exams или "экзамены" — Экзамены и консультации
 /next или "следующая" — Следующая пара
 /now или "сейчас" — Текущая пара
 /schedule или "время" — Время пар
@@ -208,7 +215,7 @@ export function createBot(token) {
     // Команды со слэшем
     if (text.startsWith('/')) {
       const cmd = text.split('@')[0].substring(1);
-      if (['today', 'tomorrow', 'week', 'next', 'now', 'group', 'help', 'schedule'].includes(cmd)) {
+      if (['today', 'tomorrow', 'week', 'next', 'now', 'group', 'help', 'schedule', 'exams'].includes(cmd)) {
         if (cmd === 'group') {
           pendingGroup.clear();
           await bot.sendMessage(chatId, '📝 Введите номер группы:');
