@@ -34,19 +34,9 @@ const TEXT_COMMANDS = {
 };
 
 const pendingGroup = new Map();
-const lastBotMessage = new Map();
 
 export function createBot(token) {
   const bot = new TelegramBot(token, { polling: true });
-
-  async function deleteMessage(chatId, messageId) {
-    try {
-      await bot.deleteMessage(chatId, messageId);
-    } catch (err) {
-      // Cannot delete messages in private chats - ignore
-    }
-  }
-
   async function safeAnswerCallback(id, options = {}) {
     try {
       await bot.answerCallbackQuery(id, options);
@@ -57,23 +47,7 @@ export function createBot(token) {
     }
   }
 
-  async function sendClean(chatId, text, replyToMessageId = null) {
-    // Удаляем команду пользователя
-    if (replyToMessageId) {
-      await deleteMessage(chatId, replyToMessageId);
-    }
-    // Удаляем предыдущее сообщение бота
-    const prevMsgId = lastBotMessage.get(chatId);
-    if (prevMsgId) {
-      await deleteMessage(chatId, prevMsgId);
-    }
-    // Отправляем новое и запоминаем ID
-    const sent = await bot.sendMessage(chatId, text);
-    lastBotMessage.set(chatId, sent.message_id);
-    return sent;
-  }
-
-  async function handleCommand(chatId, cmd, user, replyToMessageId = null) {
+  async function handleCommand(chatId, cmd, user) {
     try {
       const sub = user?.subgroup || 0;
       const group = user?.group_number;
@@ -110,7 +84,7 @@ export function createBot(token) {
           break;
         }
         case 'help':
-          await sendClean(chatId, `📋 КОМАНДЫ:
+          await bot.sendMessage(chatId, `📋 КОМАНДЫ:
 
 /start — Регистрация
 /today или "сегодня" — Расписание на сегодня
@@ -121,14 +95,14 @@ export function createBot(token) {
 /schedule или "время" — Время пар
 /group или "сменить" — Сменить группу
 /users — Статистика (админ)
-/help или "помощь" — Эта справка`, replyToMessageId);
+/help или "помощь" — Эта справка`);
           return;
         default:
           return;
       }
-      await sendClean(chatId, result, replyToMessageId);
+      await bot.sendMessage(chatId, result);
     } catch (error) {
-      await sendClean(chatId, `❌ ОШИБКА ПОЛУЧЕНИЯ ДАННЫХ\nERROR: ${error.message}`, replyToMessageId);
+      await bot.sendMessage(chatId, `❌ ОШИБКА ПОЛУЧЕНИЯ ДАННЫХ\nERROR: ${error.message}`);
     }
   }
 
@@ -224,7 +198,7 @@ export function createBot(token) {
     if (cmdFromText) {
       if (await isUserRegistered(chatId)) {
         const user = await getUser(chatId);
-        await handleCommand(chatId, cmdFromText, user, msg.message_id);
+        await handleCommand(chatId, cmdFromText, user);
       } else {
         await bot.sendMessage(chatId, '⚠️ Вы не зарегистрированы\nВведите номер группы:');
       }
@@ -242,7 +216,7 @@ export function createBot(token) {
         }
         if (await isUserRegistered(chatId)) {
           const user = await getUser(chatId);
-          await handleCommand(chatId, cmd, user, msg.message_id);
+          await handleCommand(chatId, cmd, user);
         } else {
           await bot.sendMessage(chatId, '⚠️ Вы не зарегистрированы\nВведите номер группы:');
         }
