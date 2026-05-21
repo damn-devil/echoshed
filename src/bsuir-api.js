@@ -69,13 +69,13 @@ function getLessonNumber(timeStr) {
   const minutes = h * 60 + m;
   
   const ranges = [
-    { num: 1, start: 8 * 60, end: 10 * 60 },
-    { num: 2, start: 10 * 60, end: 12 * 60 },
-    { num: 3, start: 12 * 60, end: 13 * 60 + 30 },
-    { num: 4, start: 13 * 60 + 30, end: 16 * 60 },
-    { num: 5, start: 16 * 60, end: 17 * 60 + 50 },
-    { num: 6, start: 17 * 60 + 50, end: 19 * 60 + 40 },
-    { num: 7, start: 19 * 60 + 40, end: 21 * 60 + 30 },
+    { num: 1, start: 8 * 60 + 30, end: 9 * 60 + 55 },
+    { num: 2, start: 10 * 60 + 5, end: 11 * 60 + 30 },
+    { num: 3, start: 12 * 60, end: 13 * 60 + 25 },
+    { num: 4, start: 13 * 60 + 35, end: 15 * 60 },
+    { num: 5, start: 15 * 60 + 10, end: 16 * 60 + 35 },
+    { num: 6, start: 16 * 60 + 45, end: 18 * 60 + 10 },
+    { num: 7, start: 18 * 60 + 20, end: 19 * 60 + 45 },
   ];
   
   for (const r of ranges) {
