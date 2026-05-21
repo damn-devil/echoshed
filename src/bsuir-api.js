@@ -293,6 +293,44 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0) {
 
   return text.trim();
 }
+export async function getExamsText(groupNumber) {
+  const exams = await client.schedule.getGroupExams(groupNumber);
+  const examList = Array.isArray(exams) ? exams : [];
+
+  if (examList.length === 0) {
+    return `📅 ЭКЗАМЕНЫ\n\n❌ Экзамены ещё не объявлены`;
+  }
+
+  // Группируем по предмету
+  const bySubject = {};
+  for (const exam of examList) {
+    const key = exam.subject || '❓';
+    if (!bySubject[key]) bySubject[key] = [];
+    bySubject[key].push(exam);
+  }
+
+  let text = `📅 ЭКЗАМЕНЫ И КОНСУЛЬТАЦИИ\n\n`;
+
+  for (const [subject, items] of Object.entries(bySubject)) {
+    text += `📖 ${subject}\n`;
+    for (const item of items) {
+      const type = item.lessonTypeAbbrev === 'Экзамен' || item.lessonTypeAbbrev === 'Экз' ? '📝 Экзамен' : '💬 Консультация';
+      const date = item.dateLesson || '—';
+      const time = item.startLessonTime ? `${item.startLessonTime}—${item.endLessonTime}` : '';
+      const room = item.auditories?.[0] || '';
+      const teacher = item.employees?.[0]?.lastName || '';
+
+      text += `   ${type} | 📅 ${date}`;
+      if (time) text += ` | ⏰ ${time}`;
+      if (room) text += ` | 📍 ${room}`;
+      if (teacher) text += ` | 👤 ${teacher}`;
+      text += '\n';
+    }
+    text += '\n';
+  }
+
+  return text.trim();
+}
 
 export async function getNextLessonInfo(groupNumber, subgroup = 0) {
   const lessons = await getTodayLessonsSorted(groupNumber, subgroup);
