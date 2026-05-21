@@ -1,133 +1,107 @@
-import { MongoClient } from 'mongodb';
+import { Redis } from '@upstash/redis';
 
-const MONGO_URI = process.env.MONGODB_URI;
-if (!MONGO_URI) {
-  console.error('MONGODB_URI is not set!');
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+  console.error('UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN is not set!');
   process.exit(1);
 }
 
-let db;
-let usersCollection;
-let logsCollection;
-
 export async function connectDatabase() {
-  const client = new MongoClient(MONGO_URI);
-  await client.connect();
-  db = client.db('bsuir_bot');
-  usersCollection = db.collection('users');
-  logsCollection = db.collection('notification_logs');
-  
-  await usersCollection.createIndex({ chat_id: 1 }, { unique: true });
-  await logsCollection.createIndex({ chat_id: 1, notification_type: 1, sent_at: 1 });
-  
-  console.log('[DB] Connected to MongoDB');
+  await redis.ping();
+  console.log('[DB] Redis connected');
 }
 
 export async function registerUser(chatId, groupNumber, subgroup = 0, language = 'ru', username = null) {
-  const chatIdStr = String(chatId);
-  const now = new Date().toISOString();
-
-  await usersCollection.updateOne(
-    { chat_id: chatIdStr },
-    {
-      $set: {
-        group_number: groupNumber,
-        subgroup: subgroup,
-        language: language,
-        updated_at: now,
-        username: username,
-      },
-      $setOnInsert: {
-        chat_id: chatIdStr,
-        notifications_lesson_start: true,
-        notifications_break_start: true,
-        notifications_break_warning: true,
-        notifications_lesson_warning: true,
-        created_at: now,
-      },
-    },
-    { upsert: true }
-  );
+  const key = `user:${chatId}`;
+  const exists = await redis.exists(key);
+  const data = {
+    chat_id: String(chatId),
+    group_number: groupNumber,
+    subgroup: subgroup,
+    language: language,
+    username: username,
+    notifications_lesson_start: true,
+    notifications_break_start: true,
+    notifications_break_warning: true,
+    notifications_lesson_warning: true,
+  };
+  await redis.hset(key, data);
+  if (!exists) {
+    await redis.sadd('users:all', String(chatId));
+  }
 }
 
 export async function getUser(chatId) {
-  return await usersCollection.findOne({ chat_id: String(chatId) });
-}
-
-export async function isUserRegistered(chatId) {
-  const count = await usersCollection.countDocuments({ chat_id: String(chatId) });
-  return count > 0;
-}
-
-export async function updateGroup(chatId, groupNumber, subgroup = 0) {
-  await usersCollection.updateOne(
-    { chat_id: String(chatId) },
-    { $set: { group_number: groupNumber, subgroup: subgroup, updated_at: new Date().toISOString() } }
-  );
-}
-
-export async function updateNotificationSetting(chatId, setting, value) {
-  await usersCollection.updateOne(
-    { chat_id: String(chatId) },
-    { $set: { [`notifications_${setting}`]: value, updated_at: new Date().toISOString() } }
-  );
-}
-
-export async function getAllUsers() {
-  return await usersCollection.find({}).toArray();
-}
-
-export async function getUsersWithNotification(setting) {
-  return await usersCollection.find({ [`notifications_${setting}`]: true }).toArray();
-}
-
-export async function getNotificationSettings(chatId) {
-  const user = await getUser(chatId);
-  if (!user) return { lessonStart: true, breakStart: true, breakWarning: true, lessonWarning: true };
+  const data = await redis.hgetall(`user:${chatId}`);
+  if (!data || Object.keys(data).length === 0) return null;
   return {
-    lessonStart: !!user.notifications_lesson_start,
-    breakStart: !!user.notifications_break_start,
-    breakWarning: !!user.notifications_break_warning,
-    lessonWarning: !!user.notifications_lesson_warning,
+    chat_id: data.chat_id,
+    group_number: data.group_number,
+    subgroup: parseInt(data.subgroup) || 0,
+    language: data.language || 'ru',
+    username: data.username || null,
   };
 }
 
-export async function logNotification(chatId, type, pairNumber = null) {
-  await logsCollection.insertOne({
-    chat_id: String(chatId),
-    notification_type: type,
-    pair_number: pairNumber,
-    sent_at: new Date().toISOString(),
-  });
-
-  const weekAgo = new Date();
-  weekAgo.setDate(weekAgo.getDate() - 7);
-  await logsCollection.deleteMany({ sent_at: { $lt: weekAgo.toISOString() } });
-}
-
-export async function wasNotificationSent(chatId, type, pairNumber, date) {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-
-  const count = await logsCollection.countDocuments({
-    chat_id: String(chatId),
-    notification_type: type,
-    pair_number: pairNumber,
-    sent_at: { $gte: startOfDay.toISOString(), $lte: endOfDay.toISOString() },
-  });
-  return count > 0;
+export async function isUserRegistered(chatId) {
+  return await redis.exists(`user:${chatId}`);
 }
 
 export async function getUserCount() {
-  return await usersCollection.countDocuments();
+  return await redis.scard('users:all');
 }
 
 export async function getUsersList() {
-  return await usersCollection.find({}, {
-    projection: { chat_id: 1, group_number: 1, subgroup: 1, language: 1, created_at: 1, username: 1 }
-  }).toArray();
+  const chatIds = await redis.smembers('users:all');
+  const users = [];
+  for (const id of chatIds) {
+    const data = await redis.hgetall(`user:${id}`);
+    if (data && Object.keys(data).length > 0) {
+      users.push({
+        chat_id: data.chat_id,
+        group_number: data.group_number,
+        subgroup: parseInt(data.subgroup) || 0,
+        language: data.language || 'ru',
+        username: data.username || null,
+        created_at: data.created_at || '',
+      });
+    }
+  }
+  return users;
+}
+
+export async function logNotification(chatId, type, pairNumber) {
+  const today = new Date().toISOString().split('T')[0];
+  const key = `notif:${chatId}:${type}:${pairNumber}:${today}`;
+  await redis.set(key, '1', { ex: 86400 });
+}
+
+export async function wasNotificationSent(chatId, type, pairNumber, date) {
+  const key = `notif:${chatId}:${type}:${pairNumber}:${date}`;
+  return await redis.exists(key);
+}
+
+export async function getAllUsers() {
+  const chatIds = await redis.smembers('users:all');
+  const users = [];
+  for (const id of chatIds) {
+    const data = await redis.hgetall(`user:${id}`);
+    if (data && Object.keys(data).length > 0) {
+      const hasNotifs = data.notifications_lesson_start !== 'false';
+      if (hasNotifs) {
+        users.push({
+          chat_id: data.chat_id,
+          group_number: data.group_number,
+          subgroup: parseInt(data.subgroup) || 0,
+        });
+      }
+    }
+  }
+  return users;
 }
 
 export async function closeDatabase() {}
