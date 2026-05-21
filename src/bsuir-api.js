@@ -9,6 +9,8 @@ const client = createBsuirClient({
 
 const scheduleCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
+let currentWeekCache = { week: null, timestamp: 0 };
+const WEEK_CACHE_TTL = 60 * 60 * 1000;
 
 const WEEKDAY_MAP = {
   1: 'Понедельник',
@@ -30,11 +32,35 @@ const LESSON_TYPE_MAP = {
   'ДКР': 'Домашняя контрольная работа',
 };
 
-function getMinskTime() {
-  // Minsk is UTC+3
+export function getMinskTime() {
   const now = new Date();
   const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
   return new Date(utc + (3 * 3600000));
+}
+
+async function fetchCurrentWeek() {
+  const now = Date.now();
+  if (currentWeekCache.week && now - currentWeekCache.timestamp < WEEK_CACHE_TTL) {
+    return currentWeekCache.week;
+  }
+
+  try {
+    const week = await client.schedule.getCurrentWeek();
+    currentWeekCache = { week, timestamp: now };
+    console.log(`[API] Current week from API: ${week}`);
+    return week;
+  } catch (error) {
+    console.error(`[API] Error getting current week:`, error.message);
+    return 1;
+  }
+}
+
+function isLessonOnCurrentWeek(lesson, currentWeek) {
+  if (!lesson.weekNumber) return true;
+  if (Array.isArray(lesson.weekNumber)) {
+    return lesson.weekNumber.includes(currentWeek);
+  }
+  return lesson.weekNumber === currentWeek;
 }
 
 function getLessonNumber(timeStr) {
@@ -61,14 +87,9 @@ function getLessonNumber(timeStr) {
 function enrichLesson(rawLesson) {
   const number = getLessonNumber(rawLesson.startLessonTime) || rawLesson.number || 1;
   const employee = rawLesson.employees && rawLesson.employees.length > 0
-    ? {
-        firstName: rawLesson.employees[0].firstName || '',
-        lastName: rawLesson.employees[0].lastName || '',
-      }
+    ? { firstName: rawLesson.employees[0].firstName || '', lastName: rawLesson.employees[0].lastName || '' }
     : null;
-  const auditory = rawLesson.auditories && rawLesson.auditories.length > 0
-    ? rawLesson.auditories[0]
-    : null;
+  const auditory = rawLesson.auditories && rawLesson.auditories.length > 0 ? rawLesson.auditories[0] : null;
 
   return {
     number,
@@ -84,6 +105,7 @@ function enrichLesson(rawLesson) {
     weekNumber: rawLesson.weekNumber,
     numSubgroup: rawLesson.numSubgroup,
     note: rawLesson.note,
+    announcement: rawLesson.announcement,
     dateLesson: rawLesson.dateLesson,
     startLessonTime: rawLesson.startLessonTime,
     endLessonTime: rawLesson.endLessonTime,
@@ -92,8 +114,7 @@ function enrichLesson(rawLesson) {
 
 function getTodayWeekdayKey() {
   const now = getMinskTime();
-  const day = now.getDay();
-  return WEEKDAY_MAP[day] || null;
+  return WEEKDAY_MAP[now.getDay()] || null;
 }
 
 function getTomorrowWeekdayKey() {
@@ -110,15 +131,10 @@ function getLessonTypeFull(abbrev) {
 
 function parseAuditoryInfo(auditoryStr) {
   if (!auditoryStr) return { room: '', building: '' };
-
   const parts = auditoryStr.split('/');
   if (parts.length >= 2) {
-    return {
-      room: parts[1]?.trim() || parts[0].trim(),
-      building: parts[0].trim(),
-    };
+    return { room: parts[1]?.trim() || parts[0].trim(), building: parts[0].trim() };
   }
-
   return { room: auditoryStr.trim(), building: '' };
 }
 
@@ -126,126 +142,106 @@ async function getGroupSchedule(groupNumber, subgroup = 0) {
   const cacheKey = subgroup > 0 ? `${groupNumber}_${subgroup}` : groupNumber;
   const now = Date.now();
   const cached = scheduleCache.get(cacheKey);
-  if (cached && now - cached.timestamp < CACHE_TTL) {
-    return cached.data;
-  }
+  if (cached && now - cached.timestamp < CACHE_TTL) return cached.data;
 
   try {
     console.log(`[API] Fetching schedule for ${groupNumber}...`);
     const schedule = await client.schedule.getGroup(groupNumber);
-    
-    console.log(`[API] Response keys:`, Object.keys(schedule || {}));
-    console.log(`[API] lessonsByDay exists:`, !!schedule?.lessonsByDay);
-    console.log(`[API] lessonsByDay days:`, Object.keys(schedule?.lessonsByDay || {}));
+    console.log(`[API] lessonsByDay:`, Object.keys(schedule?.lessonsByDay || {}));
     console.log(`[API] Total lessons:`, schedule?.lessons?.length || 0);
-    
-    if (schedule?.lessonsByDay) {
-      for (const [day, lessons] of Object.entries(schedule.lessonsByDay)) {
-        console.log(`[API] ${day}: ${lessons?.length || 0} lessons`);
-      }
-    }
     
     scheduleCache.set(cacheKey, { data: schedule, timestamp: now });
     return schedule;
   } catch (error) {
-    console.error(`[API] Error fetching schedule for ${cacheKey}:`, error.message);
+    console.error(`[API] Error for ${cacheKey}:`, error.message);
     throw new Error('Не удалось получить расписание. Проверьте номер группы.');
   }
 }
 
-function getLessonsForDay(schedule, dayKey, subgroup = 0) {
+async function getLessonsForDay(schedule, dayKey, subgroup = 0) {
+  const currentWeek = await fetchCurrentWeek();
   const rawLessons = schedule?.lessonsByDay?.[dayKey] || [];
-  console.log(`[API] Raw lessons for ${dayKey}:`, rawLessons.length);
-  
-  if (rawLessons.length > 0) {
-    console.log(`[API] First lesson raw keys:`, Object.keys(rawLessons[0]));
-    console.log(`[API] First lesson source:`, rawLessons[0].source);
-  }
   
   let filtered = rawLessons.filter(l => l.source === 'schedules');
-  console.log(`[API] After source filter (schedules):`, filtered.length);
+  if (filtered.length === 0) filtered = rawLessons;
   
-  // Если фильтр убрал всё — пробуем без фильтра
-  if (filtered.length === 0 && rawLessons.length > 0) {
-    console.log(`[API] Source filter removed all lessons, using unfiltered`);
-    filtered = rawLessons;
-  }
+  filtered = filtered.filter(l => isLessonOnCurrentWeek(l, currentWeek));
   
-  // Фильтрация по подгруппе
   if (subgroup > 0) {
-    const beforeSubgroupFilter = filtered.length;
     filtered = filtered.filter(l => {
       const sg = l.numSubgroup || 0;
       return sg === 0 || sg === subgroup;
     });
-    console.log(`[API] After subgroup filter (${subgroup}):`, filtered.length, `(was ${beforeSubgroupFilter})`);
   }
   
-  const enriched = filtered.map(enrichLesson).sort((a, b) => a.number - b.number);
-  console.log(`[API] After enrich:`, enriched.length);
-  
-  return enriched;
+  return filtered.map(enrichLesson).sort((a, b) => a.number - b.number);
 }
 
 export async function getTodayLessonsSorted(groupNumber, subgroup = 0) {
-  console.log(`[API] getTodayLessonsSorted called for ${groupNumber} subgroup ${subgroup}`);
-  
   const schedule = await getGroupSchedule(groupNumber, subgroup);
   const todayKey = getTodayWeekdayKey();
-  
-  console.log(`[API] Today weekday key: ${todayKey}`);
-  
-  if (!todayKey) {
-    console.log(`[API] No weekday key for today (Sunday?)`);
-    return [];
-  }
-
-  if (!schedule?.lessonsByDay?.[todayKey]) {
-    console.log(`[API] No lessonsByDay[${todayKey}] - returning empty`);
-    return [];
-  }
-
-  const lessons = getLessonsForDay(schedule, todayKey, subgroup);
-  console.log(`[API] Final lessons for today:`, lessons.length);
-  
-  return lessons;
+  if (!todayKey || !schedule?.lessonsByDay?.[todayKey]) return [];
+  return getLessonsForDay(schedule, todayKey, subgroup);
 }
 
 export async function getTomorrowLessonsSorted(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
   const tomorrowKey = getTomorrowWeekdayKey();
-  
-  console.log(`[API] Tomorrow weekday key: ${tomorrowKey}`);
-  
-  if (!tomorrowKey) {
-    console.log(`[API] No weekday key for tomorrow`);
-    return [];
-  }
+  if (!tomorrowKey || !schedule?.lessonsByDay?.[tomorrowKey]) return [];
+  return getLessonsForDay(schedule, tomorrowKey, subgroup);
+}
 
-  if (!schedule?.lessonsByDay?.[tomorrowKey]) {
-    console.log(`[API] No lessonsByDay[${tomorrowKey}] - returning empty`);
-    return [];
-  }
-
-  const lessons = getLessonsForDay(schedule, tomorrowKey, subgroup);
-  console.log(`[API] Final lessons for tomorrow:`, lessons.length);
+function formatLessonCompact(lesson) {
+  const time = `${lesson.startLessonTime}—${lesson.endLessonTime}`;
+  const subject = lesson.subject || '❓';
+  const type = lesson.lessonTypeAbbrev ? ` (${lesson.lessonTypeAbbrev})` : '';
+  const room = lesson.auditory ? ` | 📍 ${lesson.auditory}` : '';
+  const teacher = lesson.employee ? ` | 👤 ${lesson.employee.lastName}` : '';
   
-  return lessons;
+  if (lesson.announcement) {
+    const note = lesson.note ? `\n   📝 ${lesson.note}` : '';
+    return `📢 ${time} | ${subject}${type}${room}${teacher}${note}`;
+  }
+  
+  const note = lesson.note ? `\n   📝 ${lesson.note}` : '';
+  const sg = lesson.numSubgroup > 0 ? ` | 👥 п/г ${lesson.numSubgroup}` : '';
+  return `⏰ ${time} | 📖 ${subject}${type}${room}${teacher}${sg}${note}`;
+}
+
+function formatLessonFull(lesson) {
+  const time = `${lesson.startLessonTime} — ${lesson.endLessonTime}`;
+  const subject = lesson.subject || 'НЕ УКАЗАНО';
+  const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
+  const teacher = lesson.employee ? `${lesson.employee.firstName} ${lesson.employee.lastName}` : 'НЕ УКАЗАНО';
+  const auditoryInfo = parseAuditoryInfo(lesson.auditory);
+
+  let text = `📚 Пара ${lesson.number} | ⏰ ${time}\n`;
+  text += `📖 ${subject}`;
+  if (type) text += `\n📝 Тип: ${type}`;
+  text += `\n👤 ${teacher}`;
+  if (auditoryInfo.room) {
+    text += `\n📍 ${auditoryInfo.room}`;
+    if (auditoryInfo.building) text += ` (🏢 ${auditoryInfo.building})`;
+  }
+  if (lesson.numSubgroup > 0) text += `\n👥 Подгруппа: ${lesson.numSubgroup}`;
+  if (lesson.note) text += `\n📝 ${lesson.note}`;
+  if (lesson.announcement) text += `\n📢 УВЕДОМЛЕНИЕ`;
+
+  return text;
 }
 
 export async function getTodayScheduleText(groupNumber, subgroup = 0) {
   const lessons = await getTodayLessonsSorted(groupNumber, subgroup);
 
   if (lessons.length === 0) {
-    return `[РАСПИСАНИЕ НА СЕГОДНЯ]\n\nЗАНЯТИЙ НЕТ - ВЫХОДНОЙ ДЕНЬ`;
+    return `📅 РАСПИСАНИЕ НА СЕГОДНЯ\n\n❌ Занятий нет — выходной день`;
   }
 
-  let text = subgroup > 0 ? `[РАСПИСАНИЕ НА СЕГОДНЯ] (ПОДГРУППА ${subgroup})` : `[РАСПИСАНИЕ НА СЕГОДНЯ]`;
-  text += '\n';
-  text += '─'.repeat(30) + '\n\n';
+  let text = `📅 РАСПИСАНИЕ НА СЕГОДНЯ${subgroup > 0 ? ` (п/г ${subgroup})` : ''}\n`;
+  text += '─'.repeat(30) + '\n';
 
   for (const lesson of lessons) {
-    text += formatLessonFull(lesson) + '\n\n';
+    text += formatLessonCompact(lesson) + '\n';
   }
 
   return text.trim();
@@ -255,15 +251,14 @@ export async function getTomorrowScheduleText(groupNumber, subgroup = 0) {
   const lessons = await getTomorrowLessonsSorted(groupNumber, subgroup);
 
   if (lessons.length === 0) {
-    return `[РАСПИСАНИЕ НА ЗАВТРА]\n\nЗАНЯТИЙ НЕТ - ВЫХОДНОЙ ДЕНЬ`;
+    return `📅 РАСПИСАНИЕ НА ЗАВТРА\n\n❌ Занятий нет — выходной день`;
   }
 
-  let text = subgroup > 0 ? `[РАСПИСАНИЕ НА ЗАВТРА] (ПОДГРУППА ${subgroup})` : `[РАСПИСАНИЕ НА ЗАВТРА]`;
-  text += '\n';
-  text += '─'.repeat(30) + '\n\n';
+  let text = `📅 РАСПИСАНИЕ НА ЗАВТРА${subgroup > 0 ? ` (п/г ${subgroup})` : ''}\n`;
+  text += '─'.repeat(30) + '\n';
 
   for (const lesson of lessons) {
-    text += formatLessonFull(lesson) + '\n\n';
+    text += formatLessonCompact(lesson) + '\n';
   }
 
   return text.trim();
@@ -273,28 +268,26 @@ export async function getWeekScheduleText(groupNumber, subgroup = 0) {
   const schedule = await getGroupSchedule(groupNumber, subgroup);
   const weekdayOrder = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 
-  let text = subgroup > 0 ? `[РАСПИСАНИЕ НА НЕДЕЛЮ] (ПОДГРУППА ${subgroup})` : `[РАСПИСАНИЕ НА НЕДЕЛЮ]`;
-  text += '\n';
+  let text = `📅 РАСПИСАНИЕ НА НЕДЕЛЮ${subgroup > 0 ? ` (п/г ${subgroup})` : ''}\n`;
   text += '─'.repeat(30) + '\n';
 
   let hasLessons = false;
 
   for (const dayKey of weekdayOrder) {
-    const lessons = getLessonsForDay(schedule, dayKey, subgroup);
-
+    const lessons = await getLessonsForDay(schedule, dayKey, subgroup);
     if (lessons.length === 0) continue;
 
     hasLessons = true;
-    text += `\n[${dayKey.toUpperCase()}]\n`;
+    text += `\n📌 ${dayKey.toUpperCase()}\n`;
     text += '─'.repeat(20) + '\n';
 
     for (const lesson of lessons) {
-      text += formatLessonFull(lesson) + '\n\n';
+      text += formatLessonCompact(lesson) + '\n';
     }
   }
 
   if (!hasLessons) {
-    text += `\n\nНЕТ ЗАНЯТИЙ НА ЭТОЙ НЕДЕЛЕ`;
+    text += `\n\n❌ Нет занятий на этой неделе`;
   }
 
   return text.trim();
@@ -307,41 +300,30 @@ export async function getNextLessonInfo(groupNumber, subgroup = 0) {
 
   for (const lesson of lessons) {
     const startTime = timeToMinutes(lesson.startLessonTime);
-
     if (currentTime < startTime) {
       const minutesUntil = startTime - currentTime;
-      let timeUntil;
-      if (minutesUntil >= 60) {
-        const hours = Math.floor(minutesUntil / 60);
-        const mins = minutesUntil % 60;
-        timeUntil = mins > 0 ? `${hours}ч ${mins}м` : `${hours}ч`;
-      } else {
-        timeUntil = `${minutesUntil}м`;
-      }
+      let timeUntil = minutesUntil >= 60
+        ? `${Math.floor(minutesUntil / 60)}ч ${minutesUntil % 60}м`
+        : `${minutesUntil}м`;
 
       return {
         isGoingNow: false,
         isNext: true,
-        message: `[СЛЕДУЮЩАЯ ПАРА]\n${'─'.repeat(30)}\n\n${formatLessonShort(lesson)}\n\nНАЧАЛО: ${lesson.startLessonTime} (ЧЕРЕЗ ${timeUntil})`,
+        message: `➡️ СЛЕДУЮЩАЯ ПАРА\n${'─'.repeat(30)}\n${formatLessonCompact(lesson)}\n\n⏰ Начало: ${lesson.startLessonTime} (через ${timeUntil})`,
       };
     }
   }
 
   const tomorrowLessons = await getTomorrowLessonsSorted(groupNumber, subgroup);
   if (tomorrowLessons.length > 0) {
-    const firstLesson = tomorrowLessons[0];
     return {
       isGoingNow: false,
       isNext: false,
-      message: `[БОЛЬШЕ ПАР СЕГОДНЯ НЕТ]\n\nПЕРВАЯ ПАРА ЗАВТРА:\n${formatLessonShort(firstLesson)}\nНАЧАЛО: ${firstLesson.startLessonTime || '??:??'}`,
+      message: `⏹ Больше пар сегодня нет\n\n➡️ Первая пара завтра:\n${formatLessonCompact(tomorrowLessons[0])}\n⏰ Начало: ${tomorrowLessons[0].startLessonTime}`,
     };
   }
 
-  return {
-    isGoingNow: false,
-    isNext: false,
-    message: `[НЕТ ПАР СЕГОДНЯ И ЗАВТРА]`,
-  };
+  return { isGoingNow: false, isNext: false, message: `❌ Нет пар сегодня и завтра` };
 }
 
 export async function getCurrentLessonInfo(groupNumber, subgroup = 0) {
@@ -350,22 +332,19 @@ export async function getCurrentLessonInfo(groupNumber, subgroup = 0) {
   const currentTime = now.getHours() * 60 + now.getMinutes();
 
   for (const lesson of lessons) {
-    const startTime = timeToMinutes(lesson.startLessonTime);
-    const endTime = timeToMinutes(lesson.endLessonTime);
+    const start = timeToMinutes(lesson.startLessonTime);
+    const end = timeToMinutes(lesson.endLessonTime);
 
-    if (currentTime >= startTime && currentTime < endTime) {
-      const minutesLeft = endTime - currentTime;
+    if (currentTime >= start && currentTime < end) {
+      const minutesLeft = end - currentTime;
       return {
         isGoingNow: true,
-        message: `[ТЕКУЩАЯ ПАРА]\n${'─'.repeat(30)}\n\n${formatLessonFull(lesson)}\n\nОСТАЛОСЬ: ${minutesLeft}м`,
+        message: `🔴 ТЕКУЩАЯ ПАРА\n${'─'.repeat(30)}\n${formatLessonCompact(lesson)}\n\n⏱ Осталось: ${minutesLeft} мин`,
       };
     }
   }
 
-  return {
-    isGoingNow: false,
-    message: `[НЕТ АКТИВНОЙ ПАРЫ]`,
-  };
+  return { isGoingNow: false, message: `⏹ Нет активной пары` };
 }
 
 export async function validateGroup(groupNumber) {
@@ -380,65 +359,12 @@ export async function validateGroup(groupNumber) {
 export async function searchGroup(query) {
   try {
     const groups = await client.groups.listAll();
-    const filtered = groups.filter(g =>
-      g.name.toLowerCase().includes(query.toLowerCase())
-    ).slice(0, 10);
-
-    return filtered.map(g => ({
-      name: g.name,
-      faculty: g.faculty?.name || '',
-    }));
+    return groups.filter(g => g.name.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 10).map(g => ({ name: g.name, faculty: g.faculty?.name || '' }));
   } catch (error) {
     console.error('Error searching groups:', error.message);
     return [];
   }
-}
-
-function formatLessonShort(lesson) {
-  const timeStr = lesson.startLessonTime && lesson.endLessonTime
-    ? `${lesson.startLessonTime} — ${lesson.endLessonTime}`
-    : '??:?? — ??:??';
-  const subject = lesson.subject || 'НЕ УКАЗАНО';
-  const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
-  const auditoryInfo = parseAuditoryInfo(lesson.auditory);
-
-  let text = `📚 Пара ${lesson.number} | ⏰ ${timeStr}\n`;
-  text += `📖 ${subject}`;
-  if (type) text += ` (${type})`;
-  if (lesson.employee) text += `\n👤 ${lesson.employee.firstName} ${lesson.employee.lastName}`;
-  if (auditoryInfo.room) {
-    text += `\n📍 ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (🏢 ${auditoryInfo.building})`;
-  }
-  if (lesson.numSubgroup > 0) text += `\n👥 Подгруппа: ${lesson.numSubgroup}`;
-
-  return text;
-}
-
-function formatLessonFull(lesson) {
-  const timeStr = lesson.startLessonTime && lesson.endLessonTime
-    ? `${lesson.startLessonTime} — ${lesson.endLessonTime}`
-    : '??:?? — ??:??';
-  const subject = lesson.subject || 'НЕ УКАЗАНО';
-  const type = getLessonTypeFull(lesson.lessonTypeAbbrev);
-  const teacher = lesson.employee
-    ? `${lesson.employee.firstName} ${lesson.employee.lastName}`
-    : 'НЕ УКАЗАНО';
-  const auditoryInfo = parseAuditoryInfo(lesson.auditory);
-
-  let text = `📚 Пара ${lesson.number} | ⏰ ${timeStr}\n`;
-  text += `📖 ${subject}`;
-  if (type) text += `\n📝 Тип: ${type}`;
-  text += `\n👤 ${teacher}`;
-  if (auditoryInfo.room) {
-    text += `\n📍 ${auditoryInfo.room}`;
-    if (auditoryInfo.building) text += ` (🏢 ${auditoryInfo.building})`;
-  } else {
-    text += `\n📍 Аудитория не указана`;
-  }
-  if (lesson.numSubgroup > 0) text += `\n👥 Подгруппа: ${lesson.numSubgroup}`;
-
-  return text;
 }
 
 export function timeToMinutes(timeStr) {
@@ -446,4 +372,4 @@ export function timeToMinutes(timeStr) {
   return h * 60 + m;
 }
 
-export { parseAuditoryInfo };
+export { parseAuditoryInfo, fetchCurrentWeek as getCurrentWeek };
