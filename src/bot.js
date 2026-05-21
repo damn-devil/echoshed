@@ -170,7 +170,8 @@ export function createBot(token) {
     const count = users.length;
     let list = users.map((u, i) => {
       const sg = u.subgroup > 0 ? u.subgroup : 'все';
-      return `${i + 1}. [${u.group_number}] Подгруппа: ${sg} | ID: ${u.chat_id}`;
+      const nick = u.username ? `@${u.username}` : '—';
+      return `${i + 1}. [${u.group_number}] Подгруппа: ${sg} | ${nick} | ID: ${u.chat_id}`;
     }).join('\n');
     await bot.sendMessage(msg.chat.id, `👥 Пользователи (${count}):\n${list}`);
   });
@@ -201,7 +202,7 @@ export function createBot(token) {
 
       if (subInput === '0' || subInput === '1' || subInput === '2') {
         const subgroup = parseInt(subInput);
-        await registerUser(chatId, groupNumber, subgroup);
+        await registerUser(chatId, groupNumber, subgroup, 'ru', msg.from.username || null);
         pendingGroup.delete(chatId);
 
         const sgText = subgroup === 0 ? 'все' : subgroup;
