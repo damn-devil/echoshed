@@ -197,17 +197,15 @@ function formatLessonCompact(lesson) {
   const type = lesson.lessonTypeAbbrev ? ` (${lesson.lessonTypeAbbrev})` : '';
   const room = lesson.auditory ? ` | 📍 ${lesson.auditory}` : '';
   const teacher = lesson.employee ? ` | 👤 ${lesson.employee.lastName}` : '';
-  
+  const sg = lesson.numSubgroup > 0 ? ` | 👥 п/г ${lesson.numSubgroup}` : '';
+  const note = lesson.note ? `\n   📝 ${lesson.note}` : '';
+
   if (lesson.announcement) {
-    const note = lesson.note ? `\n   📝 ${lesson.note}` : '';
-    return `📢 ${time} | ${subject}${type}${room}${teacher}${note}`;
+    return `📢 ${lesson.number})📖 ${subject}${type} | ⏰ ${time}${room}${teacher}${sg}${note}`;
   }
   
-  const note = lesson.note ? `\n   📝 ${lesson.note}` : '';
-  const sg = lesson.numSubgroup > 0 ? ` | 👥 п/г ${lesson.numSubgroup}` : '';
-  return `⏰ ${time} | 📖 ${subject}${type}${room}${teacher}${sg}${note}`;
+  return `${lesson.number})📖 ${subject}${type} | ⏰ ${time}${room}${teacher}${sg}${note}`;
 }
-
 function formatLessonFull(lesson) {
   const time = `${lesson.startLessonTime} — ${lesson.endLessonTime}`;
   const subject = lesson.subject || 'НЕ УКАЗАНО';
