@@ -36,19 +36,30 @@ function formatLessonCard(lesson) {
   const teacher = lesson.employee ? ` | 👤 ${lesson.employee.lastName}` : '';
   
   if (lesson.announcement) {
-    const note = lesson.note ? `\n📝 ${lesson.note}` : '';
+    const note = lesson.note ? `\n   📝 ${lesson.note}` : '';
     return `📢 ${time} | ${subject}${type}${room}${teacher}${note}`;
   }
   
-  return `⏰ ${time} | 📖 ${subject}${type}${room}${teacher}`;
+  const note = lesson.note ? `\n   📝 ${lesson.note}` : '';
+  const sg = lesson.numSubgroup > 0 ? ` | 👥 п/г ${lesson.numSubgroup}` : '';
+  return `⏰ ${time} | 📖 ${subject}${type}${room}${teacher}${sg}${note}`;
+}
+
+function formatDaySchedule(lessons) {
+  let text = '';
+  for (let i = 0; i < lessons.length; i++) {
+    if (i > 0) text += '─'.repeat(25) + '\n';
+    text += formatLessonCard(lessons[i]) + '\n';
+  }
+  return text.trim();
 }
 
 const MORNING_MESSAGES = [
-  `☀️ Доброе утро!\n\nПервая пара через 30 мин:\n{lesson}`,
-  `🌅 Просыпайся! Через 30 мин первая пара:\n{lesson}`,
-  `⏰ Доброе утро! Не забудь — через 30 мин:\n{lesson}`,
-  `🌞 Утро! Первая пара через 30 мин:\n{lesson}`,
-  `☕ С добрым утром! Через 30 мин начинаем:\n{lesson}`,
+  `☀️ Доброе утро!\n\nВот твои пары на сегодня:\n\n{schedule}`,
+  `🌅 Просыпайся! Через 30 мин начинаем:\n\n{schedule}`,
+  `⏰ Доброе утро! Расписание на сегодня:\n\n{schedule}`,
+  `🌞 Утро! Сегодня у тебя {count} пар(ы):\n\n{schedule}`,
+  `☕ С добрым утром! План на день:\n\n{schedule}`,
 ];
 
 const LESSON_START_MESSAGES = [
@@ -155,8 +166,11 @@ export function startNotificationScheduler(bot) {
           const isLast = lesson.number === maxPairNum;
 
           if (lesson.number === 1 && isTime(startTime - 30)) {
-            await sendNotif('morning_reminder', 0,
-              random(MORNING_MESSAGES).replace('{lesson}', formatLessonCard(lesson)));
+            const scheduleText = formatDaySchedule(lessons);
+            const msg = random(MORNING_MESSAGES)
+              .replace('{schedule}', scheduleText)
+              .replace('{count}', lessons.length);
+            await sendNotif('morning_reminder', 0, msg);
           }
 
           if (isTime(startTime)) {
